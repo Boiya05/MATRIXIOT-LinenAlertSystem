@@ -1,0 +1,9 @@
+# Linen RFID Detection System - Python dependencies
+#
+# This starter version only uses Python's standard library (input(),
+# sqlite3, etc.), so there are no external packages to install yet.
+#
+# As the project grows - for example, adding real RFID hardware
+# support or a graphical interface - add dependencies here, one per
+# line, for example:
+# pyserial==3.5
