@@ -173,13 +173,12 @@ Everything described above is implemented and working:
 - **alarm.py** - pop-up warning + Telegram notification
 
 The mobile companion app (`linen-mobile-app-v2`) shares the same
-Supabase table for read-only viewing (Home stats, room list, alerts).
+Supabase tables for live viewing (Home stats, rooms/categories, and
+theft alerts synced in real time via Supabase Realtime).
 
 Possible next steps:
-- Wire real theft-alert events into the mobile app's alert banner
-  (it currently shows one hardcoded example)
+- Real push notifications on mobile (needs an EAS development build +
+  Apple Developer account - see the mobile app's README)
 - A real WhatsApp notification channel (bigger project - needs the
   WhatsApp Business API or a paid provider like Twilio)
-- A history/log of past theft alerts, not just the live inventory
-- Rebuild `LinenRFIDDetectionSystem.exe` to pick up all of the above
-  (the currently built exe still uses the old local-SQLite version)
+- A history/log view of past (not just active) theft alerts
