@@ -28,6 +28,7 @@ const MAPPING = {
   'square.grid.2x2.fill': 'grid-view',
   'door.left.hand.open': 'meeting-room',
   'person.fill': 'person',
+  'clock.fill': 'history',
 } as IconMapping;
 
 /**

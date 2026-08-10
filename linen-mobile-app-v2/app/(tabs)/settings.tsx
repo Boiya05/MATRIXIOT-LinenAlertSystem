@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
+import { useAuth } from '@/contexts/auth-context';
+import { getUserSettings, saveUserSettings } from '@/data/user-settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
@@ -12,12 +14,54 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const border = useThemeColor({}, 'border');
+  const { user, signOut } = useAuth();
 
-  // Local-only for now - these don't persist or connect to anything
-  // yet. Once the backend is wired up, this is where that state would
-  // actually be read from and saved to the user's account settings.
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    getUserSettings(user.id)
+      .then((settings) => {
+        setAlertsEnabled(settings.alertsEnabled);
+        setSoundEnabled(settings.soundEnabled);
+      })
+      .catch((err) => {
+        console.warn('Failed to load settings:', err);
+      })
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  const updateSettings = (next: { alertsEnabled: boolean; soundEnabled: boolean }) => {
+    setAlertsEnabled(next.alertsEnabled);
+    setSoundEnabled(next.soundEnabled);
+    if (user) {
+      saveUserSettings(user.id, next).catch((err) => {
+        console.warn('Failed to save settings:', err);
+      });
+    }
+  };
+
+  const handleSignOut = () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          try {
+            await signOut();
+          } catch (err) {
+            console.warn('Failed to sign out:', err);
+            setSigningOut(false);
+          }
+        },
+      },
+    ]);
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
@@ -33,7 +77,14 @@ export default function SettingsScreen() {
             description="Get notified when a flagged item is scanned"
             color={colors}
             border={border}>
-            <Switch value={alertsEnabled} onValueChange={setAlertsEnabled} />
+            {loading ? (
+              <ActivityIndicator color={colors.tint} />
+            ) : (
+              <Switch
+                value={alertsEnabled}
+                onValueChange={(value) => updateSettings({ alertsEnabled: value, soundEnabled })}
+              />
+            )}
           </SettingsRow>
           <SettingsRow
             icon="exclamationmark.triangle.fill"
@@ -41,23 +92,35 @@ export default function SettingsScreen() {
             description="Play a sound with theft alerts"
             color={colors}
             border={border}>
-            <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
+            {loading ? (
+              <ActivityIndicator color={colors.tint} />
+            ) : (
+              <Switch
+                value={soundEnabled}
+                onValueChange={(value) => updateSettings({ alertsEnabled, soundEnabled: value })}
+              />
+            )}
           </SettingsRow>
         </SettingsSection>
 
-        <SettingsSection title="Data">
+        <SettingsSection title="Account">
           <SettingsRow
-            icon="arrow.triangle.2.circlepath"
-            label="Backend connection"
-            description="Not connected yet — using local data"
+            icon="person.fill"
+            label={user?.email ?? 'Signed in'}
+            description="Settings above are saved to this account"
             color={colors}
-            border={border}>
-            <View style={[styles.statusPill, { backgroundColor: `${colors.statusStorage}22` }]}>
-              <ThemedText style={[styles.statusPillText, { color: colors.statusStorage }]}>
-                Offline
-              </ThemedText>
-            </View>
-          </SettingsRow>
+            border={border}
+          />
+          <Pressable
+            onPress={handleSignOut}
+            disabled={signingOut}
+            style={[styles.row, styles.signOutRow, { backgroundColor: colors.cardBackground, borderColor: border }]}>
+            {signingOut ? (
+              <ActivityIndicator color={colors.danger} />
+            ) : (
+              <ThemedText style={{ color: colors.danger, fontWeight: '600' }}>Log Out</ThemedText>
+            )}
+          </Pressable>
         </SettingsSection>
 
         <SettingsSection title="About">
@@ -145,6 +208,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
   },
+  signOutRow: {
+    justifyContent: 'center',
+  },
   rowIconWrap: {
     width: 36,
     height: 36,
@@ -155,14 +221,5 @@ const styles = StyleSheet.create({
   rowTextWrap: {
     flex: 1,
     gap: 2,
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusPillText: {
-    fontSize: 12,
-    fontWeight: '600',
   },
 });

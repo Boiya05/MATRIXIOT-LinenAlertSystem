@@ -102,6 +102,21 @@ export async function getActiveAlerts(): Promise<AlertEvent[]> {
   return (data ?? []).map(mapRowToAlertEvent);
 }
 
+/** Every theft alert that has already been dismissed, newest first. */
+export async function getAlertHistory(): Promise<AlertEvent[]> {
+  const { data, error } = await supabase
+    .from('theft_alerts')
+    .select('*')
+    .eq('dismissed', true)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to load alert history: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapRowToAlertEvent);
+}
+
 /** Marks an alert as dismissed (pressing "OK" on it). */
 export async function dismissAlert(alertId: number): Promise<void> {
   const { error } = await supabase.from('theft_alerts').update({ dismissed: true }).eq('id', alertId);

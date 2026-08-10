@@ -93,37 +93,41 @@ Close the window to exit the program.
 
 ## Supabase setup
 
-This app reads and writes to a `linen_items` table in a Supabase
-project, shared with the mobile companion app. To set this up (or
-re-set it up on another machine):
+This app reads and writes to `linen_items` and `theft_alerts` tables
+in a Supabase project, shared with the mobile companion app. To set
+this up (or re-set it up on another machine):
 
 1. Create a project at [supabase.com](https://supabase.com) if you
    haven't already, and create a `linen_items` table with columns:
    `tag_id` (text, primary key), `customer_name` (text), `room_number`
-   (text), `item_type` (text), `status` (text).
-2. Make sure **Row Level Security is disabled** on that table (Table
-   Editor → the table → RLS toggle) - this is a personal single-user
-   tool, so the simplest setup is used rather than writing RLS
-   policies. If RLS is left on with no policies, every request will
-   silently fail with a permissions error even with correct credentials.
+   (text), `item_type` (text), `status` (text). See the mobile app's
+   README for the `theft_alerts` table schema.
+2. **Row Level Security is enabled** on both tables, requiring a
+   logged-in Supabase Auth session (`auth.uid() is not null`) - this
+   is what keeps the mobile app's data private to logged-in users.
+   This desktop app doesn't have its own login screen, so instead of
+   authenticating, it uses Supabase's **service_role** key, which
+   bypasses RLS entirely. That's appropriate for a trusted internal
+   tool like this one, but **treat that key as a real secret** - it
+   grants full, unrestricted database access, unlike the publishable
+   key the mobile app uses.
 3. In your Supabase project, go to **Settings → API** and copy the
-   **Project URL** and **anon public** (a.k.a. "publishable") key.
+   **Project URL** and the **service_role** key (click "reveal" - it's
+   hidden by default).
 4. Copy `supabase_config.example.json` to `supabase_config.json` and
    fill in your real values:
 
    ```json
    {
      "url": "https://your-project-ref.supabase.co",
-     "key": "sb_publishable_..."
+     "service_role_key": "eyJ..."
    }
    ```
 
 `supabase_config.json` is listed in `.gitignore` so it's never
 committed - only `supabase_config.example.json` (with placeholder
-values) is meant to be shared/committed. Unlike the Telegram bot
-token, the publishable key is designed to be embedded in client apps -
-the real access control is the RLS setting above, not the key's
-secrecy.
+values) is meant to be shared/committed. Handle this file with the
+same care as `telegram_config.json`.
 
 If `supabase_config.json` is missing or the connection fails, the app
 shows a clear pop-up on startup explaining the problem instead of

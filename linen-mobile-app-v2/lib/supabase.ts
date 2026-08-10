@@ -9,10 +9,14 @@
  * into the app at build time by Expo). See .env.example for the
  * expected format. Like the desktop app, this uses Supabase's
  * "publishable" key, which is designed to be embedded in client apps -
- * the real access control is the table's Row Level Security setting,
- * not the key's secrecy.
+ * for the shared linen_items/theft_alerts tables, the real access
+ * control is the table's Row Level Security setting, not the key's
+ * secrecy. For user_settings (per-account data), RLS policies tied to
+ * the logged-in user's session are what keep one person's settings
+ * private from another's.
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
@@ -28,11 +32,14 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
-    // This app never signs anyone in - it just reads/writes a public
-    // table with the publishable key - so there's no session to
-    // persist or refresh.
-    persistSession: false,
-    autoRefreshToken: false,
+    // Sessions need to persist across app restarts (so you're not
+    // asked to log in every time) and refresh themselves in the
+    // background. AsyncStorage is React Native's on-device storage -
+    // Supabase's JS client needs an explicit adapter for it, since
+    // browser localStorage isn't available here.
+    storage: AsyncStorage,
+    persistSession: true,
+    autoRefreshToken: true,
     detectSessionInUrl: false,
   },
 });

@@ -7,9 +7,23 @@ file - it now talks to a shared Supabase project instead, so the same
 data is visible from both this desktop app and the mobile companion
 app.
 
-The Supabase project URL and API key are kept in supabase_config.json
-(NOT in this file), so the real credentials never end up hardcoded in
-source code. See supabase_config.example.json for the expected format.
+linen_items and theft_alerts have Row Level Security requiring a
+logged-in user. This app doesn't have its own login screen, so it
+authenticates as Supabase's "service_role" instead, which bypasses RLS
+entirely - appropriate here since this is a trusted internal tool, not
+a public client. The mobile app takes the opposite approach: it uses
+the public "publishable" key and requires the user to log in, so RLS
+is what protects the data there.
+
+The Supabase project URL and service_role key are kept in
+supabase_config.json (NOT in this file), so the real credentials never
+end up hardcoded in source code. See supabase_config.example.json for
+the expected format.
+
+Unlike the publishable key used elsewhere in this project, the
+service_role key is a real secret - it grants full, unrestricted
+access to the database. Treat supabase_config.json with the same care
+as telegram_config.json.
 """
 
 import json
@@ -49,10 +63,11 @@ _client = None
 
 def _load_supabase_config():
     """
-    Read the Supabase project URL and API key from supabase_config.json.
+    Read the Supabase project URL and service_role key from
+    supabase_config.json.
 
     Returns:
-        dict: {"url": ..., "key": ...}
+        dict: {"url": ..., "service_role_key": ...}
 
     Raises:
         FileNotFoundError: if supabase_config.json doesn't exist yet.
@@ -60,7 +75,7 @@ def _load_supabase_config():
     if not os.path.exists(SUPABASE_CONFIG_PATH):
         raise FileNotFoundError(
             "supabase_config.json not found. Copy supabase_config.example.json "
-            "to supabase_config.json and fill in your project URL and key."
+            "to supabase_config.json and fill in your project URL and service_role key."
         )
     with open(SUPABASE_CONFIG_PATH, "r", encoding="utf-8") as config_file:
         return json.load(config_file)
@@ -71,7 +86,7 @@ def get_client():
     global _client
     if _client is None:
         config = _load_supabase_config()
-        _client = create_client(config["url"], config["key"])
+        _client = create_client(config["url"], config["service_role_key"])
     return _client
 
 

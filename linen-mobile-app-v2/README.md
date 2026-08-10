@@ -9,7 +9,7 @@ refresh needed for theft alerts.
 This app is currently **read-only** by design: all scanning,
 assigning, and exit-scan detection happens on the desktop app. This
 app is for checking on things from your phone - stats, what's in which
-room, and live theft alerts.
+room, live theft alerts, and alert history - behind a login.
 
 ## Requirements
 
@@ -40,9 +40,10 @@ room, and live theft alerts.
 
    `.env` is gitignored - only `.env.example` (placeholders) is meant
    to be committed. Unlike a real secret, Supabase's publishable key is
-   designed to be embedded in client apps; the actual access control is
-   the Row Level Security setting on the Supabase tables (see the
-   desktop app's README for that setup).
+   designed to be embedded in client apps - see **Supabase Auth & RLS
+   setup** below for what actually protects the data.
+
+3. Run the Supabase setup below before your first login.
 
 ## Running it
 
@@ -61,6 +62,10 @@ shows manually.
 
 ## What's in the app
 
+**Login / Sign Up** - the app opens to a login screen. New accounts
+sign up with an email + password. Sessions persist across restarts, so
+you only need to log in once per install.
+
 **Home** - live stats (Total / In Use / Laundry / Storage) and a
 scrollable theft-alerts section. New alerts appear automatically while
 the app is open (Supabase Realtime); press **OK** on an alert to
@@ -70,21 +75,110 @@ dismiss it.
 - **In Use** - grouped by room, showing the customer and item count; tap a room to see who's in it and exactly which items
 - **Laundry** / **Storage** - grouped by item type instead (customer/room aren't meaningful once an item isn't with a guest), with a count per type; tap a category to see its list of Tag IDs
 
-**Settings** - notification/sound toggles (local only for now), and a
-connection status row.
+**History** - every alert you've already dismissed, newest first, with its original timestamp - kept separate from Home's active-alerts banner.
+
+**Settings** - notification/sound toggles, saved to your account (so
+they follow you across devices/reinstalls), plus your email and a
+**Log Out** button.
 
 ## How it stays in sync
 
 Every screen reads through `data/linen-data.ts`, which queries
 Supabase directly - no local mock data or caching layer. Theft alerts
-additionally subscribe to Supabase Realtime (`hooks/use-theft-alerts.ts`),
-so a new alert logged by the desktop app's exit scanner appears here
-live, without needing to reopen or refresh the app.
+and alert history additionally subscribe to Supabase Realtime
+(`hooks/use-theft-alerts.ts`, `hooks/use-alert-history.ts`), so a new
+alert logged by the desktop app's exit scanner - or a dismissal from
+another device - appears here live.
+
+## Supabase Auth & RLS setup
+
+This app requires a Supabase Auth session to do anything - both to log
+in, and because `linen_items` and `theft_alerts` now require one via
+Row Level Security. Run this in the Supabase SQL Editor (once per
+project):
+
+```sql
+-- Per-account settings (Settings screen toggles)
+create table user_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  alerts_enabled boolean not null default true,
+  sound_enabled boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+alter table user_settings enable row level security;
+
+create policy "Users can view their own settings"
+  on user_settings for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own settings"
+  on user_settings for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own settings"
+  on user_settings for update
+  using (auth.uid() = user_id);
+
+-- Require login to read/write the shared linen data
+alter table linen_items enable row level security;
+
+create policy "Authenticated users can view linen items"
+  on linen_items for select
+  using (auth.uid() is not null);
+
+create policy "Authenticated users can insert linen items"
+  on linen_items for insert
+  with check (auth.uid() is not null);
+
+create policy "Authenticated users can update linen items"
+  on linen_items for update
+  using (auth.uid() is not null);
+
+create policy "Authenticated users can delete linen items"
+  on linen_items for delete
+  using (auth.uid() is not null);
+
+alter table theft_alerts enable row level security;
+
+create policy "Authenticated users can view theft alerts"
+  on theft_alerts for select
+  using (auth.uid() is not null);
+
+create policy "Authenticated users can insert theft alerts"
+  on theft_alerts for insert
+  with check (auth.uid() is not null);
+
+create policy "Authenticated users can update theft alerts"
+  on theft_alerts for update
+  using (auth.uid() is not null);
+```
+
+`user_settings` restricts each row to the account it belongs to
+(`auth.uid() = user_id`) - one person's settings are never visible to
+another's. `linen_items`/`theft_alerts` stay shared across every
+logged-in account (this is a single shared inventory, not per-user
+data) but now require *some* valid session to access at all - the
+publishable key alone, without logging in, no longer works.
+
+The desktop app doesn't have its own login screen, so it authenticates
+as Supabase's `service_role` instead, which bypasses RLS entirely -
+see the desktop app's README for that setup.
+
+**Email confirmation:** by default, Supabase requires confirming your
+email before you can log in, and its built-in email sending is
+aggressively rate-limited (a handful of emails per hour) - fine for a
+real deployment with proper SMTP configured, but likely to get in your
+way while testing. Consider turning off "Confirm email" under
+**Authentication → Sign In / Providers → Email** for a smoother local
+testing loop.
 
 ## Current status
 
-Working: live item stats, room/category browsing with drill-down, and
-real-time theft alerts with dismiss.
+Working: login/signup with persistent sessions, live item stats,
+room/category browsing with drill-down, real-time theft alerts with
+dismiss, alert history, and per-account settings - all protected by
+Supabase Row Level Security now that real accounts exist.
 
 Not yet built:
 - **Real push notifications.** Expo Go can no longer receive remote
@@ -92,4 +186,5 @@ Not yet built:
   [EAS Build](https://docs.expo.dev/build/introduction/), which in turn
   needs an Apple Developer Program membership ($99/year) for iOS. Until
   then, alerts only show up while the app is open.
+- **Password reset.** The login screen has no recovery flow yet.
 - Scanning/assigning from the phone itself (currently desktop-only)
