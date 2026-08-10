@@ -10,10 +10,10 @@ there is flagged as a possible theft if:
   - the matching item's status is "In Use" (it's currently with a
     customer, so it shouldn't be leaving on its own).
 
-Items marked "Checked Out" (stored, not currently with any customer)
-are allowed to pass the exit reader without being flagged - that's
-treated as normal movement, e.g. staff sending items out to be
-laundered.
+Items marked "Laundry" (picked up to be washed) or "Storage" (stored,
+not currently with any customer) are allowed to pass the exit reader
+without being flagged - both are treated as normal staff movement,
+not a customer walking off with something.
 """
 
 from models import STATUS_IN_USE
@@ -36,5 +36,5 @@ def check_tag(tag_id, item=None):
         return True
 
     # Registered items only alarm while they're "In Use" (with a
-    # customer). "Checked Out" (stored) items are allowed to pass.
+    # customer). "Laundry" and "Storage" items are allowed to pass.
     return item.status == STATUS_IN_USE

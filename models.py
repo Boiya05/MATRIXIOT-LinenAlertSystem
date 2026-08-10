@@ -10,11 +10,13 @@ sheet checked out to a customer/room).
 
 from dataclasses import dataclass
 
-# The two statuses a linen item can have:
+# The three statuses a linen item can have:
 #   - IN_USE: the item is currently with a customer (e.g. in their room).
-#   - CHECKED_OUT: the item is stored and not currently in use by anyone.
+#   - LAUNDRY: the item has been picked up and is being washed.
+#   - STORAGE: the item is stored and not currently in use by anyone.
 STATUS_IN_USE = "In Use"
-STATUS_CHECKED_OUT = "Checked Out"
+STATUS_LAUNDRY = "Laundry"
+STATUS_STORAGE = "Storage"
 
 
 @dataclass

@@ -22,7 +22,7 @@ from tkinter import messagebox, ttk
 import alarm
 import database
 import detector
-from models import STATUS_CHECKED_OUT, STATUS_IN_USE, LinenItem
+from models import STATUS_IN_USE, STATUS_LAUNDRY, STATUS_STORAGE, LinenItem
 
 # The kinds of linen items a simulated scan can produce. A real RFID
 # tag would already have its item type encoded on it, so we just pick
@@ -125,7 +125,7 @@ class LinenApp:
         ttk.Label(saved_header_frame, text="Sort by:").pack(side="left", padx=(15, 5))
         self.sort_by_combo = ttk.Combobox(
             saved_header_frame,
-            values=["Tag ID", "Customer Name"],
+            values=["Tag ID", "Customer Name", "Item Type"],
             state="readonly",
             width=15,
         )
@@ -147,19 +147,26 @@ class LinenApp:
         actions_frame = ttk.Frame(self.root, padding=10)
         actions_frame.pack(anchor="e")
 
-        mark_checked_out_button = ttk.Button(
-            actions_frame,
-            text="Mark Checked Out",
-            command=lambda: self._on_mark_status(STATUS_CHECKED_OUT),
-        )
-        mark_checked_out_button.pack(side="left", padx=5)
-
         mark_in_use_button = ttk.Button(
             actions_frame,
             text="Mark In Use",
             command=lambda: self._on_mark_status(STATUS_IN_USE),
         )
         mark_in_use_button.pack(side="left", padx=5)
+
+        mark_laundry_button = ttk.Button(
+            actions_frame,
+            text="Mark Laundry",
+            command=lambda: self._on_mark_status(STATUS_LAUNDRY),
+        )
+        mark_laundry_button.pack(side="left", padx=5)
+
+        mark_storage_button = ttk.Button(
+            actions_frame,
+            text="Mark Storage",
+            command=lambda: self._on_mark_status(STATUS_STORAGE),
+        )
+        mark_storage_button.pack(side="left", padx=5)
 
         edit_button = ttk.Button(
             actions_frame, text="Edit Selected", command=self._on_edit_selected
@@ -322,7 +329,8 @@ class LinenApp:
 
     def _on_mark_status(self, new_status):
         """
-        Called when the user clicks "Mark Checked Out" or "Mark In Use".
+        Called when the user clicks "Mark In Use", "Mark Laundry", or
+        "Mark Storage".
 
         Updates the status of whichever row is selected in the Saved
         Items table.
@@ -401,7 +409,8 @@ class LinenApp:
                 return
 
             # Status isn't editable here - it keeps whatever it already
-            # was (use the "Mark Checked Out"/"Mark In Use" buttons for that).
+            # was (use the "Mark In Use"/"Mark Laundry"/"Mark Storage"
+            # buttons for that).
             updated_item = LinenItem(
                 tag_id=tag_id,
                 customer_name=new_customer_name,
@@ -428,7 +437,13 @@ class LinenApp:
         for row in self.tree.get_children():
             self.tree.delete(row)
 
-        sort_by = "customer_name" if self.sort_by_combo.get() == "Customer Name" else "tag_id"
+        sort_choice = self.sort_by_combo.get()
+        if sort_choice == "Customer Name":
+            sort_by = "customer_name"
+        elif sort_choice == "Item Type":
+            sort_by = "item_type"
+        else:
+            sort_by = "tag_id"
 
         for item in database.get_all_items(sort_by=sort_by):
             self.tree.insert(
@@ -445,8 +460,22 @@ class LinenApp:
 
 
 def main():
-    """Make sure the database exists, then open the GUI window."""
-    database.initialize_database()
+    """Confirm Supabase is reachable, then open the GUI window."""
+    try:
+        database.initialize_database()
+    except Exception as error:
+        # Unlike the old local SQLite file, Supabase needs a working
+        # internet connection and correct credentials. Show a clear
+        # pop-up instead of crashing with a raw traceback.
+        root = tk.Tk()
+        root.withdraw()  # hide the empty main window behind the error
+        messagebox.showerror(
+            "Can't Connect to Database",
+            "Could not connect to Supabase.\n\n"
+            f"{error}\n\n"
+            "Check your internet connection and supabase_config.json, then try again.",
+        )
+        return
 
     root = tk.Tk()
     LinenApp(root)

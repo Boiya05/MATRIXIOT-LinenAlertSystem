@@ -4,9 +4,14 @@
 # ID is ignored here.
 telegram_config.json
 
+# Same idea for Supabase - supabase_config.example.json (placeholders)
+# is fine to commit, the real file with your project URL/key is not.
+supabase_config.json
+
 # The database holds real customer names and room numbers - keep it
-# local only, never commit it.
+# local only, never commit it. Same reasoning for any exported CSV.
 data/*.db
+*.csv
 
 # Python
 __pycache__/

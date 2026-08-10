@@ -18,6 +18,8 @@ import urllib.parse
 import urllib.request
 from tkinter import messagebox
 
+import database
+
 
 def _get_base_dir():
     """
@@ -79,6 +81,20 @@ def _send_telegram_message(text):
         print(f"Failed to send Telegram alert: {error}")
 
 
+def _log_alert_to_supabase(tag_id, item, message):
+    """
+    Save this alert to the theft_alerts table so the mobile app's Home
+    screen can show it live via Supabase Realtime.
+
+    Best-effort, same as _send_telegram_message: a logging failure
+    (e.g. no internet) shouldn't stop the pop-up or Telegram alert.
+    """
+    try:
+        database.log_theft_alert(tag_id, item, message)
+    except Exception as error:
+        print(f"Failed to log theft alert to Supabase: {error}")
+
+
 def trigger_alarm(tag_id, item=None):
     """
     Warn about a tag detected at the exit reader: shows a pop-up
@@ -99,18 +115,26 @@ def trigger_alarm(tag_id, item=None):
             f"Status: {item.status}\n\n"
             "This item was just detected leaving through the exit scanner!"
         )
+        alert_message = (
+            f"{item.item_type} ({tag_id}) was detected at the exit scanner "
+            f"while marked {item.status}."
+        )
     else:
         details = (
             f"Tag: {tag_id}\n\n"
             "This tag isn't registered in the system, but it was just "
             "detected leaving through the exit scanner!"
         )
+        alert_message = f"Unregistered tag {tag_id} was detected at the exit scanner."
 
     # messagebox.showerror() below blocks until the user clicks OK, so
-    # if we called _send_telegram_message() after it, the Telegram
-    # message wouldn't send until the pop-up was dismissed. Sending it
-    # on a background thread first lets both go out at the same time.
+    # if we called the network sends after it, they wouldn't go out
+    # until the pop-up was dismissed. Sending both on background
+    # threads first lets everything go out at the same time.
     telegram_text = f"🚨 THEFT ALERT 🚨\n\n{details}"
     threading.Thread(target=_send_telegram_message, args=(telegram_text,), daemon=True).start()
+    threading.Thread(
+        target=_log_alert_to_supabase, args=(tag_id, item, alert_message), daemon=True
+    ).start()
 
     messagebox.showerror("⚠ THEFT ALERT ⚠", details)

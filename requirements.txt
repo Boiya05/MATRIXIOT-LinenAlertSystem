@@ -1,9 +1,13 @@
 # Linen RFID Detection System - Python dependencies
 #
-# This starter version only uses Python's standard library (input(),
-# sqlite3, etc.), so there are no external packages to install yet.
-#
-# As the project grows - for example, adding real RFID hardware
-# support or a graphical interface - add dependencies here, one per
-# line, for example:
-# pyserial==3.5
+# Install with: pip install -r requirements.txt
+
+# Official client for talking to the shared Supabase database
+# (see database.py and supabase_config.example.json).
+supabase==2.31.0
+
+# Windows doesn't ship IANA timezone data the way Linux/macOS do, and
+# some of supabase's dependencies need it for timestamp handling -
+# without this, a packaged .exe can fail at runtime even though it
+# works fine when run from source.
+tzdata==2026.3
