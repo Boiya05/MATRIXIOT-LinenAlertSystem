@@ -1,16 +1,9 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
@@ -70,7 +63,7 @@ export default function SignUpScreen() {
         behavior={Platform.select({ ios: 'padding', default: undefined })}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <ThemedText type="title">Create Account</ThemedText>
+            <ThemedText type="title">🏨 Create Account</ThemedText>
             <ThemedText style={{ color: colors.textSecondary }}>
               For staff access to the linen tracking system
             </ThemedText>
@@ -113,7 +106,7 @@ export default function SignUpScreen() {
               </ThemedText>
             )}
 
-            <Pressable
+            <PressableScale
               onPress={handleSignUp}
               disabled={submitting}
               style={[styles.button, { backgroundColor: colors.tint, opacity: submitting ? 0.6 : 1 }]}>
@@ -122,13 +115,13 @@ export default function SignUpScreen() {
               ) : (
                 <ThemedText style={[styles.buttonText, { color: colors.background }]}>Sign Up</ThemedText>
               )}
-            </Pressable>
+            </PressableScale>
 
-            <Pressable onPress={() => router.replace('/login')} style={styles.link}>
+            <PressableScale onPress={() => router.replace('/login')} style={styles.link}>
               <ThemedText style={{ color: colors.tint, fontSize: 13 }}>
                 Already have an account? Log in
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
       </KeyboardAvoidingView>

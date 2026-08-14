@@ -28,7 +28,10 @@ export function useLinenItems() {
       })
       .catch((err) => {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : String(err));
+          // Log the real error for debugging; show a generic message in
+          // the UI so raw backend error text never reaches the screen.
+          console.warn('Failed to load linen items:', err);
+          setError("Couldn't load linen items. Pull to refresh to try again.");
         }
       })
       .finally(() => {

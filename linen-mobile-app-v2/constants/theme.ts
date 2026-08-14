@@ -20,10 +20,12 @@ export const Colors = {
     border: '#E1E5EA',
     textSecondary: '#5B6470',
     // Status semantics used across the app - keep separate from `tint`,
-    // which is just the brand accent color.
-    statusInUse: '#0A7EA4',
+    // which is just the brand accent color. Each status gets its own hue
+    // (green/amber/violet) so the stat grid, room icons, and category
+    // rows are easy to tell apart at a glance.
+    statusInUse: '#16A34A',
     statusLaundry: '#D97706',
-    statusStorage: '#6B7280',
+    statusStorage: '#7C3AED',
     danger: '#DC2626',
     dangerBackground: '#FEE2E2',
   },
@@ -37,9 +39,9 @@ export const Colors = {
     cardBackground: '#1E2124',
     border: '#2A2D30',
     textSecondary: '#9BA1A6',
-    statusInUse: '#4DA8CE',
+    statusInUse: '#4ADE80',
     statusLaundry: '#F0A93E',
-    statusStorage: '#9BA1A6',
+    statusStorage: '#A78BFA',
     danger: '#F87171',
     dangerBackground: '#3B1D1D',
   },

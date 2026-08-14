@@ -1,16 +1,9 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
@@ -52,7 +45,7 @@ export default function LoginScreen() {
         behavior={Platform.select({ ios: 'padding', default: undefined })}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <ThemedText type="title">Linen RFID</ThemedText>
+            <ThemedText type="title">🏨 Linen RFID</ThemedText>
             <ThemedText style={{ color: colors.textSecondary }}>
               Log in to view live linen status and alerts
             </ThemedText>
@@ -82,7 +75,7 @@ export default function LoginScreen() {
 
             {error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{error}</ThemedText>}
 
-            <Pressable
+            <PressableScale
               onPress={handleLogIn}
               disabled={submitting}
               style={[styles.button, { backgroundColor: colors.tint, opacity: submitting ? 0.6 : 1 }]}>
@@ -91,11 +84,11 @@ export default function LoginScreen() {
               ) : (
                 <ThemedText style={[styles.buttonText, { color: colors.background }]}>Log In</ThemedText>
               )}
-            </Pressable>
+            </PressableScale>
 
             <Link href="/signup" style={styles.link}>
               <ThemedText style={{ color: colors.tint, fontSize: 13 }}>
-                Don't have an account? Sign up
+                {"Don't have an account? Sign up"}
               </ThemedText>
             </Link>
           </View>

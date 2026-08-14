@@ -118,7 +118,8 @@ create policy "Users can insert their own settings"
 
 create policy "Users can update their own settings"
   on user_settings for update
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- Require login to read/write the shared linen data
 alter table linen_items enable row level security;
@@ -133,7 +134,8 @@ create policy "Authenticated users can insert linen items"
 
 create policy "Authenticated users can update linen items"
   on linen_items for update
-  using (auth.uid() is not null);
+  using (auth.uid() is not null)
+  with check (auth.uid() is not null);
 
 create policy "Authenticated users can delete linen items"
   on linen_items for delete
@@ -151,7 +153,23 @@ create policy "Authenticated users can insert theft alerts"
 
 create policy "Authenticated users can update theft alerts"
   on theft_alerts for update
-  using (auth.uid() is not null);
+  using (auth.uid() is not null)
+  with check (auth.uid() is not null);
+```
+
+**Already ran this setup on an existing project before the `with check` clauses were
+added above?** `create policy` will fail with "policy already exists" if you just
+re-run the block. Run this instead to add the checks to your existing policies:
+
+```sql
+alter policy "Users can update their own settings" on user_settings
+  with check (auth.uid() = user_id);
+
+alter policy "Authenticated users can update linen items" on linen_items
+  with check (auth.uid() is not null);
+
+alter policy "Authenticated users can update theft alerts" on theft_alerts
+  with check (auth.uid() is not null);
 ```
 
 `user_settings` restricts each row to the account it belongs to
@@ -181,10 +199,15 @@ dismiss, alert history, and per-account settings - all protected by
 Supabase Row Level Security now that real accounts exist.
 
 Not yet built:
-- **Real push notifications.** Expo Go can no longer receive remote
-  push notifications - that requires moving to a development build via
-  [EAS Build](https://docs.expo.dev/build/introduction/), which in turn
-  needs an Apple Developer Program membership ($99/year) for iOS. Until
-  then, alerts only show up while the app is open.
+- **Real (background/closed-app) push notifications.** Theft alerts
+  currently notify you locally - Settings → Notifications → "Theft
+  alerts" - which works while the app is open or briefly
+  backgrounded, but Android suspends the app's JS/network within
+  seconds of switching away, so it doesn't reliably fire once you've
+  moved on to another app or the screen's off. A fully reliable
+  version needs a server-side push trigger (Supabase Edge Function +
+  Firebase/FCM), which is real infrastructure outside this repo, not
+  just app code - intentionally not set up, to keep the project
+  simple.
 - **Password reset.** The login screen has no recovery flow yet.
 - Scanning/assigning from the phone itself (currently desktop-only)

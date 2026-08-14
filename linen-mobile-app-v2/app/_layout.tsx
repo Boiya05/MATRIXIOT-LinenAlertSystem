@@ -2,11 +2,20 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { Colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
+import { ThemePreferenceProvider } from '@/contexts/theme-preference-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { configureNotifications } from '@/lib/notifications';
+
+// Sets the foreground notification behavior and (Android) creates the
+// theft alerts notification channel. A one-time, side-effect-only call
+// - see lib/notifications.ts for why this is safe to run at import
+// time rather than needing to live inside a component.
+configureNotifications();
 
 /**
  * Decides whether to show the logged-in app or the login/signup
@@ -49,15 +58,35 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  return (
+    // Required ancestor for react-native-gesture-handler's gesture-based
+    // components (the swipe-to-dismiss on theft alerts) to work reliably,
+    // especially on Android.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemePreferenceProvider>
+        <AuthProvider>
+          <AppShell />
+        </AuthProvider>
+      </ThemePreferenceProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+/**
+ * Split out from RootLayout so useColorScheme() (which reads from
+ * ThemePreferenceProvider above) runs inside the provider, not above it.
+ */
+function AppShell() {
   const colorScheme = useColorScheme();
 
   return (
-    <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <RootNavigator />
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </AuthProvider>
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <RootNavigator />
+      {/* Status bar icon color follows the resolved app theme, not the
+          raw OS setting, so it stays legible even when the user has
+          overridden the OS scheme from Settings. */}
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+    </ThemeProvider>
   );
 }
 

@@ -49,7 +49,13 @@ function mapRowToLinenItem(row: {
   };
 }
 
-function mapRowToAlertEvent(row: {
+/**
+ * Exported (not just used internally) so the realtime INSERT handler in
+ * hooks/use-theft-alerts.ts can turn the raw payload row Supabase sends
+ * straight into an AlertEvent for a notification, without a second
+ * network round-trip to re-fetch the same row it was just given.
+ */
+export function mapRowToAlertEvent(row: {
   id: number;
   tag_id: string;
   item_type: string;

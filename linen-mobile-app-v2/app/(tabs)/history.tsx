@@ -1,12 +1,15 @@
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { type AlertEvent } from '@/data/linen-data';
 import { useAlertHistory } from '@/hooks/use-alert-history';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useHasLoadedOnce } from '@/hooks/use-has-loaded-once';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function HistoryScreen() {
@@ -15,11 +18,13 @@ export default function HistoryScreen() {
   const border = useThemeColor({}, 'border');
 
   const { alerts, loading, error, refresh } = useAlertHistory();
+  const hasLoadedOnce = useHasLoadedOnce(loading);
+  const showSkeleton = !hasLoadedOnce;
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
       <View style={styles.header}>
-        <ThemedText type="title">Alert History</ThemedText>
+        <ThemedText type="title">🕑 Alert History</ThemedText>
         <ThemedText style={{ color: colors.textSecondary }}>
           {alerts.length} resolved alert{alerts.length === 1 ? '' : 's'}
         </ThemedText>
@@ -27,24 +32,34 @@ export default function HistoryScreen() {
 
       {error && <ThemedText style={[styles.errorText, { color: colors.danger }]}>{error}</ThemedText>}
 
-      <FlatList
-        data={alerts}
-        keyExtractor={(alert) => String(alert.id)}
-        contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
-        renderItem={({ item }) => <HistoryRow alert={item} color={colors} border={border} />}
-        ListEmptyComponent={
-          !loading ? (
+      {showSkeleton ? (
+        <View style={styles.listContent}>
+          <SkeletonRowList />
+        </View>
+      ) : (
+        <FlatList
+          data={alerts}
+          keyExtractor={(alert) => String(alert.id)}
+          contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
+          renderItem={({ item }) => (
+            // A newly-dismissed alert (arriving live via Realtime) fades
+            // and slides into place instead of just popping into the list.
+            <Animated.View entering={FadeInDown.duration(300)} layout={LinearTransition}>
+              <HistoryRow alert={item} color={colors} border={border} />
+            </Animated.View>
+          )}
+          ListEmptyComponent={
             <View style={styles.emptyState}>
               <IconSymbol name="clock.fill" size={28} color={colors.textSecondary} />
               <ThemedText style={{ color: colors.textSecondary, textAlign: 'center' }}>
-                No resolved alerts yet. Alerts you dismiss on Home show up here.
+                🎉 No resolved alerts yet. Alerts you dismiss on Home show up here.
               </ThemedText>
             </View>
-          ) : null
-        }
-      />
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

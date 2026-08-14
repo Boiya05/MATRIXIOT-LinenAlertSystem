@@ -46,7 +46,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    lineHeight: 32,
+    // Deliberately taller than the font size (not the usual ~1x ratio) -
+    // emoji glyphs render with a bigger bounding box than Latin text on
+    // some platforms, so a tight line-height clips their top edge.
+    lineHeight: 40,
   },
   subtitle: {
     fontSize: 20,

@@ -3,11 +3,13 @@ import { useMemo } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { getItemsByStatusAndType, type LinenStatus } from '@/data/linen-data';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useHasLoadedOnce } from '@/hooks/use-has-loaded-once';
 import { useLinenItems } from '@/hooks/use-linen-items';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
@@ -22,15 +24,20 @@ export default function CategoryScreen() {
     () => getItemsByStatusAndType(allItems, status, itemType),
     [allItems, status, itemType]
   );
+  // Full-list skeleton only on the very first load; a background refresh
+  // of already-visible items just uses the small header spinner instead.
+  const hasLoadedOnce = useHasLoadedOnce(loading);
+  const showSkeleton = !hasLoadedOnce;
 
   const statusColor =
     status === 'In Use' ? colors.statusInUse : status === 'Laundry' ? colors.statusLaundry : colors.statusStorage;
   const statusIcon: IconSymbolName =
     status === 'Laundry' ? 'arrow.triangle.2.circlepath' : 'archivebox.fill';
+  const statusEmoji = status === 'Laundry' ? '🧺' : '📦';
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
-      <Stack.Screen options={{ title: itemType }} />
+      <Stack.Screen options={{ title: `${statusEmoji} ${itemType}` }} />
 
       <View style={styles.header}>
         <View style={[styles.iconWrap, { backgroundColor: `${statusColor}22` }]}>
@@ -42,28 +49,32 @@ export default function CategoryScreen() {
             {items.length} item{items.length === 1 ? '' : 's'} in {status}
           </ThemedText>
         </View>
-        {loading && <ActivityIndicator color={colors.tint} style={{ marginLeft: 'auto' }} />}
+        {loading && !showSkeleton && <ActivityIndicator color={colors.tint} style={{ marginLeft: 'auto' }} />}
       </View>
 
       {error && <ThemedText style={[styles.errorText, { color: colors.danger }]}>{error}</ThemedText>}
 
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.tagId}
-        contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
-        renderItem={({ item }) => (
-          <View style={[styles.tagCard, { backgroundColor: colors.cardBackground, borderColor: border }]}>
-            <ThemedText type="defaultSemiBold">{item.tagId}</ThemedText>
-          </View>
-        )}
-        ListEmptyComponent={
-          !loading ? (
+      {showSkeleton ? (
+        <View style={styles.listContent}>
+          <SkeletonRowList />
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.tagId}
+          contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
+          renderItem={({ item }) => (
+            <View style={[styles.tagCard, { backgroundColor: colors.cardBackground, borderColor: border }]}>
+              <ThemedText type="defaultSemiBold">{item.tagId}</ThemedText>
+            </View>
+          )}
+          ListEmptyComponent={
             <ThemedText style={{ color: colors.textSecondary }}>No items found.</ThemedText>
-          ) : null
-        }
-      />
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

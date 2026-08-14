@@ -34,7 +34,8 @@ yarn-error.*
 .env*.local
 
 # Real Supabase URL/key - .env.example (placeholders) is fine to commit.
-.env
+.env*
+!.env.example
 
 # typescript
 *.tsbuildinfo
