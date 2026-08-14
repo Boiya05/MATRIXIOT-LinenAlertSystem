@@ -1,11 +1,19 @@
 # Linen RFID Detection System — Full Architecture Teardown
 
-This is a from-the-code (not from-the-README) walkthrough of your project. Two applications share one backend:
+> **This document is out of date as of the "Proposed System Architecture & Scope" supervisor doc.** It was written when the desktop app was the only place writing happened and the mobile app was read-only - neither is true anymore. Current state, in brief:
+> - **`linen-mobile-app-v2/` is now the primary operational app**, per the supervisor-reviewed architecture. It has a **Scan** tab that registers items and runs the exit-scan check, in Simulated mode (works everywhere) or a real USB reader mode (Android + OTG cable, needs a dev-client build - see its `hardware/README.md`).
+> - **`linen_detection_system/`** (desktop) is now a secondary/legacy scanning terminal, not the only writer - see its `README.md`.
+> - **`linen-web-dashboard/`** is a new Next.js app (deployed on Vercel) that didn't exist when this document was written - live dashboard, inventory, alert history, and its own Scan page (same Simulated + real-hardware pattern, using the Web Serial API instead of USB Host). See its `README.md`.
+> - **Blynk's role is still unconfirmed** - flagged in the [Pilferage Detection Architecture](.) interpretation doc and not yet resolved.
+>
+> Treat each app's own `README.md` as the current source of truth; this file is kept for the parts of the original teardown (RLS setup, Realtime wiring, general Supabase schema) that are still accurate, not as an up-to-date map of what writes where.
 
-- **`linen_detection_system/`** — Python + Tkinter desktop app. This is where all writing happens: registering items, changing status, running the exit scanner.
-- **`linen-mobile-app-v2/`** — Expo/React Native phone app. Read-only viewer + login + alert dismissal + per-account settings.
-- **Supabase** (hosted Postgres + Auth + Realtime) — the only backend. There is no custom server you wrote; Supabase's own REST/websocket API *is* your API layer.
-- **Telegram Bot API** — external notification channel, called directly from the desktop app.
+This is a from-the-code (not from-the-README) walkthrough of your project, as it stood before the mobile-primary shift above. Two applications shared one backend:
+
+- **`linen_detection_system/`** — Python + Tkinter desktop app. Originally where all writing happened: registering items, changing status, running the exit scanner. Now a secondary scanning terminal, not the only one.
+- **`linen-mobile-app-v2/`** — Expo/React Native phone app. Originally a read-only viewer; now the primary operational app, with its own Scan tab.
+- **Supabase** (hosted Postgres + Auth + Realtime) — the only backend. There is no custom server you wrote; Supabase's own REST/websocket API *is* your API layer. Still accurate - `linen-web-dashboard/` reads/writes the same project, no new backend.
+- **Telegram Bot API** — external notification channel, called directly from the desktop app. Still accurate for the desktop app; Blynk's role as a possible alternative/addition is unresolved.
 
 ---
 

@@ -1,44 +1,73 @@
-# hardware/ - why there's no real reader here yet
+# hardware/ - RFID reader abstraction (mobile)
 
-The desktop app and web dashboard both have a real-hardware reader
-implementation alongside their simulated one (`SerialRFIDReader` /
-`WebSerialReader`), because both had a genuinely generic transport
-available - USB serial (`pyserial`) and the Web Serial API both work
-the same way regardless of which reader model you eventually plug in.
+Per the supervisor-reviewed architecture ("Proposed System Architecture
+& Scope - Mobile Long-Range UHF RFID Hotel Property / Linen System"),
+**this app is now the primary operational RFID application** - it
+connects directly to the physical reader, not just the desktop app.
+The desktop app and web dashboard remain part of the system (desktop
+as a secondary/legacy scanning terminal, the web dashboard as the
+management view), but the mobile app is where real scanning is meant
+to happen going forward.
 
-Mobile doesn't have an equivalent generic transport, so building one
-here would mean guessing at a specific vendor's SDK rather than
-isolating one - the opposite of the approach used everywhere else in
-this project. Two real, important facts worth knowing before deciding
-how (or whether) to pursue this:
+## What's here
 
-1. **A phone's built-in NFC chip cannot read long-range UHF tags.**
-   NFC (what phones have) and UHF RFID (860-960MHz, what "long range"
-   scanning needs) are different radio technologies on different
-   frequency bands - NFC's read range is a few centimeters by design,
-   the opposite of what an exit-scanner checkpoint needs. This isn't
-   a software limitation to work around; the hardware physically
-   can't do it. If the tags in use are UHF (as the project brief
-   specifies), no amount of app code makes a phone's own NFC radio
-   read them.
+Same `RFIDReader` interface as the desktop app's `hardware/` and the
+web dashboard's `hardware/` - `connect()`/`disconnect()`/`start()`/
+`stop()`/`poll()`, so the Scan screen doesn't need to know or care
+which implementation is active:
 
-2. **Real scanning on mobile means an external Bluetooth UHF reader
-   accessory** (handheld "sleds" that clip onto a phone, sold by
-   vendors like Zebra, Chainway, etc.), which means:
-   - Picking a specific model - same "unknown protocol" blocker as
-     the desktop/web readers, except there's no vendor-agnostic
-     fallback the way serial ports are for USB.
-   - Integrating its SDK (usually Bluetooth Low Energy) as a native
-     module - `react-native-ble-plx` or a vendor-provided module are
-     the usual options.
-   - **Leaving Expo Go.** Native BLE modules don't run in Expo Go -
-     this app would need a custom EAS development build from that
-     point on (the project already has EAS Build set up for the APK,
-     so this is a config change, not new infrastructure - but it does
-     mean Expo Go stops being usable for testing once this is added).
+- **`simulated-reader.ts`** - button/typed-input driven, no hardware,
+  works everywhere including Expo Go. Still the default mode.
+- **`usb-serial-reader.ts`** - the real-hardware path. Talks to a UHF
+  reader over USB via Android's USB Host mode (an OTG cable), using
+  [`react-native-usb-serialport-for-android`](https://github.com/tofugear/react-native-usb-serialport-for-android).
+  Same isolated-placeholder pattern as `serial_reader.py` and
+  `web-serial-reader.ts`: the transport (listing devices, requesting
+  permission, opening the port, reading data) is fully built; the
+  reader-specific protocol (`sendStartupCommands`,
+  `parseTagFromFrame`) is a placeholder until a reader model and its
+  datasheet are in hand.
 
-**What exists today**: `simulated-reader.ts` only - the same
-`RFIDReader` interface as the other two apps, so a real accessory
-reader can be added later as a second implementation without changing
-the Scan tab's code, exactly like adding `WebSerialReader` didn't
-require changing the web dashboard's Scan page.
+## Real constraints worth knowing
+
+- **Android only.** iOS doesn't allow generic USB-serial access to
+  third-party apps without MFi hardware certification - not realistic
+  for this project. A phone's built-in NFC also cannot substitute for
+  this: NFC and long-range UHF RFID are different radio technologies
+  entirely (NFC's range is centimeters by design), so there's no
+  software path that makes a phone's own NFC chip read these tags.
+- **Needs a USB OTG cable/adapter** between the phone and the reader.
+- **No longer usable in Expo Go, on any platform, for any screen.**
+  Adding `react-native-usb-serialport-for-android` as a native
+  dependency means the whole app now needs a dev-client build - Expo
+  Go can only run apps built from its fixed set of built-in native
+  modules. From here on, use:
+  ```powershell
+  npx eas-cli build --platform android --profile development
+  ```
+  (the `development` profile in `eas.json` already has
+  `developmentClient: true` set up for exactly this.)
+- **Untested against real hardware.** `usb-serial-reader.ts` is
+  written directly against the library's documented JS API
+  (`UsbSerialManager.list/tryRequestPermission/open`,
+  `UsbSerial.send/close/onReceived`), and a development-client build
+  was used to confirm it compiles and links correctly - but there's no
+  physical Android device + OTG cable + real reader available to
+  verify actual on-device behavior (permission dialogs, real data
+  flow) in this environment. Treat it as a solid starting point that
+  still needs verifying on real hardware, not as confirmed-working.
+
+## What's still unconfirmed (per the architecture doc itself)
+
+The doc's own "Items to Confirm" section lists these as open - they
+block `usb-serial-reader.ts`'s two placeholder methods specifically,
+not the rest of the app:
+
+- Exact reader model and antenna configuration
+- The reader's communication protocol and the commands needed to get
+  EPC data out of it
+- Required read range and physical detection setup
+
+Everything else (registration, exit-scan logic, Supabase writes, the
+Scan screen itself) works today in Simulated mode and doesn't change
+once these are answered - only the two placeholder methods do.

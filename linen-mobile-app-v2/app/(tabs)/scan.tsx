@@ -14,7 +14,7 @@ import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { getAllItems, getItemByTag, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
-import { useReader } from '@/hooks/use-reader';
+import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { checkTag } from '@/lib/detector';
 
@@ -70,16 +70,70 @@ export default function ScanScreen() {
   );
 }
 
-function SectionCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function SectionCard({
+  title,
+  subtitle,
+  headerRight,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
 
   return (
     <View style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
-      <ThemedText type="defaultSemiBold">{title}</ThemedText>
-      <ThemedText style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 4 }}>{subtitle}</ThemedText>
+      <View style={styles.cardHeaderRow}>
+        <View style={{ flex: 1 }}>
+          <ThemedText type="defaultSemiBold">{title}</ThemedText>
+          <ThemedText style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 4 }}>{subtitle}</ThemedText>
+        </View>
+        {headerRight}
+      </View>
       {children}
     </View>
+  );
+}
+
+/** Small badge/button for switching a checkpoint between Simulated and USB reader mode. */
+function ReaderModeSwitch({
+  mode,
+  connecting,
+  usbSerialSupported,
+  onConnectUsb,
+  onDisconnectUsb,
+}: {
+  mode: ReaderMode;
+  connecting: boolean;
+  usbSerialSupported: boolean;
+  onConnectUsb: () => void;
+  onDisconnectUsb: () => void;
+}) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
+
+  if (mode === 'usb-serial') {
+    return (
+      <PressableScale onPress={onDisconnectUsb} style={styles.modeBadge}>
+        <View style={[styles.modeBadge, { backgroundColor: `${colors.tint}18` }]}>
+          <View style={[styles.liveDot, { backgroundColor: colors.tint }]} />
+          <ThemedText style={{ color: colors.tint, fontSize: 11, fontWeight: '700' }}>USB connected</ThemedText>
+        </View>
+      </PressableScale>
+    );
+  }
+
+  return (
+    <PressableScale onPress={onConnectUsb} disabled={connecting || !usbSerialSupported}>
+      <View style={[styles.modeBadgeOutline, { borderColor: colors.border, opacity: usbSerialSupported ? 1 : 0.5 }]}>
+        <ThemedText style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600' }}>
+          {connecting ? 'Connecting…' : usbSerialSupported ? 'Connect USB reader' : 'USB needs Android'}
+        </ThemedText>
+      </View>
+    </PressableScale>
   );
 }
 
@@ -154,15 +208,36 @@ function RegisterSection() {
   }
 
   return (
-    <SectionCard title="Register items" subtitle="Scan a tag, then assign a guest and room.">
-      <PressableScale
-        onPress={handleScan}
-        disabled={scanning}
-        style={[styles.scanButton, { borderColor: colors.tint, opacity: scanning ? 0.6 : 1 }]}>
-        <ThemedText style={{ color: colors.tint, fontWeight: '600' }}>
-          {scanning ? 'Scanning…' : '+ Scan (simulated)'}
-        </ThemedText>
-      </PressableScale>
+    <SectionCard
+      title="Register items"
+      subtitle="Scan a tag, then assign a guest and room."
+      headerRight={
+        <ReaderModeSwitch
+          mode={reader.mode}
+          connecting={reader.connecting}
+          usbSerialSupported={reader.usbSerialSupported}
+          onConnectUsb={reader.connectUsbSerial}
+          onDisconnectUsb={reader.disconnectUsbSerial}
+        />
+      }>
+      {reader.error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{reader.error}</ThemedText>}
+
+      {reader.mode === 'simulated' ? (
+        <PressableScale
+          onPress={handleScan}
+          disabled={scanning}
+          style={[styles.scanButton, { borderColor: colors.tint, opacity: scanning ? 0.6 : 1 }]}>
+          <ThemedText style={{ color: colors.tint, fontWeight: '600' }}>
+            {scanning ? 'Scanning…' : '+ Scan (simulated)'}
+          </ThemedText>
+        </PressableScale>
+      ) : (
+        <View style={[styles.scanButton, { borderColor: colors.tint }]}>
+          <ThemedText style={{ color: colors.tint, fontWeight: '600' }}>
+            Waiting for a tag - scans appear below automatically.
+          </ThemedText>
+        </View>
+      )}
 
       <View style={[styles.pendingList, { borderColor: colors.border }]}>
         {pending.length === 0 ? (
@@ -272,31 +347,51 @@ function ExitScannerSection() {
   }
 
   return (
-    <SectionCard title="Exit scanner" subtitle="Any tag detected here is treated as leaving.">
-      <View style={styles.exitRow}>
-        <TextInput
-          style={[
-            styles.input,
-            styles.exitInput,
-            { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
-          ]}
-          placeholder="Tag ID"
-          placeholderTextColor={colors.textSecondary}
-          autoCapitalize="characters"
-          value={manualTagId}
-          onChangeText={setManualTagId}
-          onSubmitEditing={handleManualSubmit}
-          returnKeyType="done"
+    <SectionCard
+      title="Exit scanner"
+      subtitle="Any tag detected here is treated as leaving."
+      headerRight={
+        <ReaderModeSwitch
+          mode={reader.mode}
+          connecting={reader.connecting}
+          usbSerialSupported={reader.usbSerialSupported}
+          onConnectUsb={reader.connectUsbSerial}
+          onDisconnectUsb={reader.disconnectUsbSerial}
         />
-        <PressableScale
-          onPress={handleManualSubmit}
-          disabled={processing}
-          style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: processing ? 0.6 : 1 }]}>
-          <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Scan</ThemedText>
-        </PressableScale>
-      </View>
-
+      }>
+      {reader.error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{reader.error}</ThemedText>}
       {error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{error}</ThemedText>}
+
+      {reader.mode === 'simulated' ? (
+        <View style={styles.exitRow}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.exitInput,
+              { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+            ]}
+            placeholder="Tag ID"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="characters"
+            value={manualTagId}
+            onChangeText={setManualTagId}
+            onSubmitEditing={handleManualSubmit}
+            returnKeyType="done"
+          />
+          <PressableScale
+            onPress={handleManualSubmit}
+            disabled={processing}
+            style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: processing ? 0.6 : 1 }]}>
+            <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Scan</ThemedText>
+          </PressableScale>
+        </View>
+      ) : (
+        <View style={[styles.pendingList, { borderColor: colors.border, padding: 14 }]}>
+          <ThemedText style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center' }}>
+            Waiting for a tag - the exit check runs automatically.
+          </ThemedText>
+        </View>
+      )}
 
       {lastResult ? (
         <View
@@ -336,6 +431,30 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
     gap: 10,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  modeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  modeBadgeOutline: {
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   scanButton: {
     borderWidth: 1.5,

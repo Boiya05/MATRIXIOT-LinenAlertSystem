@@ -1,18 +1,23 @@
-# Linen RFID Detection System - Mobile Companion
+# Linen RFID Detection System - Mobile
 
-A live-viewing companion app for the [desktop Linen RFID Detection
-System](../linen_detection_system/) - built with Expo (React Native).
-It reads the same Supabase tables the desktop app writes to, so a scan
-made on the Windows app shows up here within seconds, with no manual
-refresh needed for theft alerts.
+Built with Expo (React Native). Per the supervisor-reviewed
+architecture ("Proposed System Architecture & Scope - Mobile
+Long-Range UHF RFID Hotel Property / Linen System"), **this is now the
+primary operational app in the system** - it's meant to connect
+directly to the physical UHF RFID reader, not just view data collected
+elsewhere. The [desktop app](../linen_detection_system/) remains a
+secondary/legacy scanning terminal, and the
+[web dashboard](../linen-web-dashboard/) is the management view - all
+three read and write the exact same Supabase project, so a scan made
+on any of them shows up on the others within seconds.
 
-Started as **read-only** by design, with scanning kept desktop-only.
-It now also has a **Scan** tab (see below) that can register items and
-run the exit-scan theft check directly from your phone - in
-**Simulated** mode today, since real UHF hardware isn't buildable on
-mobile yet (see `hardware/README.md` for exactly why). The rest of the
-app is still for checking on things from your phone - stats, what's in
-which room, live theft alerts, and alert history - behind a login.
+The **Scan** tab (see below) registers items and runs the exit-scan
+theft check. **Simulated** mode works today, everywhere, no hardware
+needed. **USB reader mode** talks to a real UHF reader directly over
+USB (Android + an OTG cable) - see `hardware/README.md` for exactly
+what that requires and what's still unverified. The rest of the app is
+for checking on things from your phone - stats, what's in which room,
+live theft alerts, and alert history - behind a login.
 
 ## Requirements
 
@@ -75,19 +80,22 @@ the app is open (Supabase Realtime); press **OK** on an alert to
 dismiss it.
 
 **Scan** - two independent sections, matching the desktop app's two
-checkpoints:
-- **Register items** - tap **+ Scan (simulated)** to generate a Tag
-  ID, then assign a Customer Name + Room Number to everything scanned
-  so far, same batch-assign flow as the desktop app.
-- **Exit scanner** - type a Tag ID and submit to run it through the
-  same theft rule as `detector.py` (`lib/detector.ts` here); a flagged
-  scan writes a `theft_alerts` row the same way the desktop app's
-  `alarm.py` does.
+checkpoints, each independently switchable between **Simulated** and
+**USB reader** mode:
+- **Register items** - scan a tag (simulated button, or a real reader
+  once connected), then assign a Customer Name + Room Number to
+  everything scanned so far, same batch-assign flow as the desktop
+  app.
+- **Exit scanner** - a Tag ID (typed, or from a real reader) runs
+  through the same theft rule as `detector.py` (`lib/detector.ts`
+  here); a flagged scan writes a `theft_alerts` row the same way the
+  desktop app's `alarm.py` does.
 
-Both are Simulated-only for now - no real reader integration exists on
-mobile yet. See `hardware/README.md` for why (short version: a phone's
-NFC can't read long-range UHF tags at all, and a real external reader
-accessory would need leaving Expo Go for a custom dev build).
+USB reader mode needs Android + a USB OTG cable, and needs a
+dev-client build instead of Expo Go - see `hardware/README.md` for the
+full constraints and what's still unverified (the actual reader
+protocol is a placeholder until a model is chosen, and on-device
+behavior hasn't been tested against real hardware).
 
 **List View** - a segmented view of all linen:
 - **In Use** - grouped by room, showing the customer and item count; tap a room to see who's in it and exactly which items
@@ -213,20 +221,34 @@ testing loop.
 
 Working: login/signup with persistent sessions, live item stats,
 room/category browsing with drill-down, real-time theft alerts with
-dismiss, alert history, per-account settings, and now item
-registration + exit-scan theft detection (Simulated mode) from the
-Scan tab - all protected by Supabase Row Level Security now that real
-accounts exist. The Scan flow was verified against live data before
-being committed: a full register → assign → exit-scan →
-theft-alert-logged pass through the real UI, using a throwaway test
-account and test rows that were deleted afterward.
+dismiss, alert history, per-account settings, and item registration +
+exit-scan theft detection from the Scan tab, in both Simulated mode
+and (per the supervisor-reviewed architecture doc) a real USB reader
+mode via Android's USB Host API - all protected by Supabase Row Level
+Security now that real accounts exist. Simulated mode was verified
+against live data before being committed: a full register → assign →
+exit-scan → theft-alert-logged pass through the real UI, using a
+throwaway test account and test rows that were deleted afterward. USB
+reader mode was verified to compile and link correctly via a real
+development-client build, but not yet tested against physical
+hardware - see `hardware/README.md`.
 
-Not yet built:
-- **Real RFID hardware on mobile.** See `hardware/README.md` - a
-  phone's NFC can't read the long-range UHF tags this project uses at
-  all (different radio tech entirely), so this would need an external
-  Bluetooth reader accessory, a specific model chosen, and leaving
-  Expo Go for a custom dev build. None of that is set up yet.
+Not yet built / not yet confirmed:
+- **The real reader's protocol.** `hardware/usb-serial-reader.ts`'s
+  two placeholder methods (`sendStartupCommands`,
+  `parseTagFromFrame`) can't be finished until a specific reader model
+  is chosen and its datasheet is in hand - see the architecture doc's
+  own "Items to Confirm" section.
+- **On-device verification of USB reader mode.** No physical Android
+  device + OTG cable + reader has been available to test the actual
+  permission flow and data path yet.
+- **The API/integration layer** for external hotel or hospital
+  management software to read selected data - the doc calls for this,
+  Supabase is structured to support it, but the layer itself (what
+  Vercel would host) isn't built.
+- **Blynk's role** is still unconfirmed - see `ARCHITECTURE.md` at the
+  repo root for why this needs a direct answer before building around
+  it.
 - **Real (background/closed-app) push notifications.** Theft alerts
   currently notify you locally - Settings → Notifications → "Theft
   alerts" - which works while the app is open or briefly
