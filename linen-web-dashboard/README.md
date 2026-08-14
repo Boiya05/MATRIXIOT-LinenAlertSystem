@@ -7,10 +7,13 @@ Vercel. It reads the exact same Supabase tables the desktop app and
 desktop app shows up here too, with active theft alerts live via
 Supabase Realtime.
 
-This is the "management-facing" client in the system: where hotel
-management checks live status and reviews alerts from a browser,
-rather than the on-site scanning terminal (desktop app) or the
-on-the-go viewer (mobile app).
+This started as a read-only "management-facing" client - where hotel
+management checks live status and reviews alerts from a browser - but
+now also does everything the desktop app's scanning terminal does:
+register items and run the exit-scanner theft check, straight from a
+browser tab. That makes the desktop app optional, not required: any
+machine with Chrome or Edge can now be a scanning checkpoint, not just
+the one running the Python app.
 
 ## What's here
 
@@ -21,6 +24,13 @@ on-the-go viewer (mobile app).
 - **Dashboard** (`/`) — live item-status counts, and active theft
   alerts that update in real time (new alerts appear, dismissals from
   any device remove them) with a dismiss button.
+- **Scan** (`/scan`) — register new items (scan + assign a guest/room)
+  and run the exit-scanner theft check, in two independent sections
+  matching the desktop app's two checkpoints. Each defaults to
+  **Simulated** mode (a button/manual Tag ID field, works in any
+  browser, no hardware needed) and can switch to **Web Serial** mode
+  to talk to a real USB RFID reader directly - see **Real hardware
+  from the browser** below before relying on that mode.
 - **Inventory** (`/inventory`) — every linen item, with a status
   filter and a search box (tag, guest, room, item type).
 - **Alert history** (`/history`) — every already-dismissed alert,
@@ -33,6 +43,7 @@ linen-web-dashboard/
 ├── app/
 │   ├── login/page.tsx       # Sign-in form
 │   ├── page.tsx             # Dashboard (stats + live alerts)
+│   ├── scan/page.tsx        # Register items + exit-scanner theft check
 │   ├── inventory/page.tsx   # Full item list, filterable/searchable
 │   ├── history/page.tsx     # Dismissed alert history
 │   └── layout.tsx           # Root layout - wraps everything in AuthProvider
@@ -40,8 +51,19 @@ linen-web-dashboard/
 │   ├── nav.tsx               # Top nav shown on every protected page
 │   └── protected.tsx         # Redirects to /login if no session
 ├── contexts/auth-context.tsx # Session state + signIn/signOut - mirrors the mobile app's
-├── data/linen-data.ts        # Supabase queries - ported directly from the mobile app
+├── data/linen-data.ts        # Supabase queries - reads ported from the mobile app,
+│                              # writes (saveLinenItem/logTheftAlert) ported from the
+│                              # desktop app's database.py
+├── lib/detector.ts           # Theft-detection rule, ported from the desktop app's detector.py
+├── hardware/                  # RFID reader abstraction - browser-side twin of the
+│   │                           # desktop app's hardware/ package, same design
+│   ├── base.ts                # RFIDReader interface (queue + poll, same pattern as Python)
+│   ├── simulated-reader.ts    # Button/typed-input driven fake reader (default mode)
+│   ├── web-serial-reader.ts   # Real USB reader via the Web Serial API - protocol
+│   │                           # parsing isolated the same way as serial_reader.py
+│   └── web-serial.d.ts        # Ambient types for Web Serial (not in TS's DOM lib yet)
 ├── hooks/
+│   ├── use-reader.ts          # Poll loop + mode switching for the Scan page
 │   ├── use-linen-items.ts    # Live-loads all items
 │   ├── use-theft-alerts.ts   # Live-loads active alerts + dismiss
 │   └── use-alert-history.ts  # Live-loads dismissed alerts
@@ -110,6 +132,42 @@ and follow the prompts (link/create a project, confirm the root is
 this folder) - `npx vercel --prod` for a production deploy once you're
 ready.
 
+## Real hardware from the browser
+
+The Scan page's **Connect real reader** button uses the [Web Serial
+API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API)
+to talk to a USB RFID reader directly, the same way the desktop app's
+`SerialRFIDReader` does over `pyserial` - opens the port, reads it on
+a loop, pushes parsed Tag IDs into the same queue the Simulated mode
+uses. A few real constraints worth knowing before relying on it:
+
+- **Chromium only.** Chrome and Edge support Web Serial; Firefox and
+  Safari don't, at all - not even behind a flag. The button disables
+  itself with an explanatory tooltip when the browser doesn't support
+  it, rather than failing after a click.
+- **HTTPS or localhost only.** Works on this Vercel deployment and in
+  local dev; wouldn't work if this were ever served over plain HTTP.
+- **The reader has to be plugged into whatever machine is running the
+  browser tab.** Deploying this dashboard to Vercel doesn't change
+  that - "scanning from the web" still means a laptop with Chrome
+  sitting at the checkpoint with the reader plugged into it. It's a
+  different program than the desktop app, not a way to scan from
+  anywhere in the world.
+- **The protocol is still a placeholder**, exactly like the desktop
+  app's `serial_reader.py` - `hardware/web-serial-reader.ts` has the
+  same two isolated methods (`sendStartupCommands`,
+  `parseTagFromFrame`) waiting on a real reader model and its
+  datasheet. Until then, it assumes plain ASCII lines, which almost
+  certainly isn't how a real UHF reader actually talks. Keep both
+  files in sync if you're implementing the same reader's protocol for
+  both the desktop app and this dashboard.
+
+A 5-second per-tag cooldown is built into the exit scanner
+(`RESCAN_COOLDOWN_MS` in `app/scan/page.tsx`) so a real reader's
+continuous-inventory mode - which reports the same tag many times a
+second while it's in range - doesn't log a duplicate theft alert for
+every single one of those reads.
+
 ## Known follow-up
 
 **Realtime replication is only enabled for `theft_alerts` in the
@@ -123,15 +181,23 @@ toggle, not a code change).
 ## Current status
 
 Working: login, live dashboard stats, live theft alerts with dismiss,
-searchable/filterable inventory, alert history - all reading the same
-Supabase project as the desktop and mobile apps, protected by the same
-Row Level Security policies.
+searchable/filterable inventory, alert history, and now item
+registration + exit-scan theft detection (simulated by default, real
+USB hardware via Web Serial once a reader is connected) - all reading
+and writing the same Supabase project as the desktop and mobile apps,
+protected by the same Row Level Security policies. Verified against
+live data before being committed: a full register → assign → exit-scan
+→ theft-alert-logged pass through the real UI, using a throwaway test
+account and test rows that were deleted afterward.
 
 Not yet built:
 - Multi-property support (see the root `ARCHITECTURE.md` for the
   `organization_id` design this would use)
 - Role-based permissions (currently, any authenticated account has
-  full read/write access - same open item flagged for the mobile app)
-- Item registration/editing from the dashboard (currently read +
-  dismiss only, matching the mobile app's read-only design; scanning
-  and registration stay desktop-only)
+  full read/write access - same open item flagged for the mobile app;
+  now more relevant, since this dashboard can write data too)
+- Editing an already-registered item's details (status changes and
+  new registrations are covered; fixing a mistake on an existing item
+  still needs the desktop app's Edit dialog)
+- The real reader protocol itself - `hardware/web-serial-reader.ts`'s
+  two placeholder methods, same blocker as the desktop app

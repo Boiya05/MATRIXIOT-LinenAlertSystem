@@ -93,6 +93,67 @@ export async function getAllItems(): Promise<LinenItem[]> {
   return (data ?? []).map(mapRowToLinenItem);
 }
 
+/**
+ * Look up a single linen item by its tag ID - used by the exit
+ * scanner to check whether a scanned tag is registered, and what
+ * status it's in, before deciding whether to flag it. Mirrors the
+ * desktop app's database.get_item_by_tag().
+ */
+export async function getItemByTag(tagId: string): Promise<LinenItem | null> {
+  const { data, error } = await supabase.from('linen_items').select('*').eq('tag_id', tagId).maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to look up tag: ${error.message}`);
+  }
+
+  return data ? mapRowToLinenItem(data) : null;
+}
+
+/**
+ * Save a linen item - inserts a new row, or updates the existing one
+ * if this tag_id is already registered (same upsert-on-tag_id
+ * behavior as the desktop app's database.save_linen_item()).
+ */
+export async function saveLinenItem(item: LinenItem): Promise<void> {
+  const { error } = await supabase.from('linen_items').upsert(
+    {
+      tag_id: item.tagId,
+      customer_name: item.customerName,
+      room_number: item.roomNumber,
+      item_type: item.itemType,
+      status: item.status,
+    },
+    { onConflict: 'tag_id' }
+  );
+
+  if (error) {
+    throw new Error(`Failed to save item: ${error.message}`);
+  }
+}
+
+/**
+ * Record a theft alert - mirrors the desktop app's
+ * database.log_theft_alert(). Called by the exit scanner when a
+ * scanned tag is flagged (see lib/detector.ts).
+ */
+export async function logTheftAlert(
+  tagId: string,
+  item: LinenItem | null,
+  message: string
+): Promise<void> {
+  const { error } = await supabase.from('theft_alerts').insert({
+    tag_id: tagId,
+    item_type: item?.itemType ?? 'Unknown',
+    room_number: item?.roomNumber ?? 'Unknown',
+    customer_name: item?.customerName ?? 'Unknown',
+    message,
+  });
+
+  if (error) {
+    throw new Error(`Failed to log theft alert: ${error.message}`);
+  }
+}
+
 /** Every theft alert that hasn't been dismissed yet, newest first. */
 export async function getActiveAlerts(): Promise<AlertEvent[]> {
   const { data, error } = await supabase

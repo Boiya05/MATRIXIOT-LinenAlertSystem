@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/auth-context';
 
 const LINKS = [
   { href: '/', label: 'Dashboard' },
+  { href: '/scan', label: 'Scan' },
   { href: '/inventory', label: 'Inventory' },
   { href: '/history', label: 'Alert history' },
 ];
