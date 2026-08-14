@@ -6,10 +6,13 @@ It reads the same Supabase tables the desktop app writes to, so a scan
 made on the Windows app shows up here within seconds, with no manual
 refresh needed for theft alerts.
 
-This app is currently **read-only** by design: all scanning,
-assigning, and exit-scan detection happens on the desktop app. This
-app is for checking on things from your phone - stats, what's in which
-room, live theft alerts, and alert history - behind a login.
+Started as **read-only** by design, with scanning kept desktop-only.
+It now also has a **Scan** tab (see below) that can register items and
+run the exit-scan theft check directly from your phone - in
+**Simulated** mode today, since real UHF hardware isn't buildable on
+mobile yet (see `hardware/README.md` for exactly why). The rest of the
+app is still for checking on things from your phone - stats, what's in
+which room, live theft alerts, and alert history - behind a login.
 
 ## Requirements
 
@@ -70,6 +73,21 @@ you only need to log in once per install.
 scrollable theft-alerts section. New alerts appear automatically while
 the app is open (Supabase Realtime); press **OK** on an alert to
 dismiss it.
+
+**Scan** - two independent sections, matching the desktop app's two
+checkpoints:
+- **Register items** - tap **+ Scan (simulated)** to generate a Tag
+  ID, then assign a Customer Name + Room Number to everything scanned
+  so far, same batch-assign flow as the desktop app.
+- **Exit scanner** - type a Tag ID and submit to run it through the
+  same theft rule as `detector.py` (`lib/detector.ts` here); a flagged
+  scan writes a `theft_alerts` row the same way the desktop app's
+  `alarm.py` does.
+
+Both are Simulated-only for now - no real reader integration exists on
+mobile yet. See `hardware/README.md` for why (short version: a phone's
+NFC can't read long-range UHF tags at all, and a real external reader
+accessory would need leaving Expo Go for a custom dev build).
 
 **List View** - a segmented view of all linen:
 - **In Use** - grouped by room, showing the customer and item count; tap a room to see who's in it and exactly which items
@@ -195,10 +213,20 @@ testing loop.
 
 Working: login/signup with persistent sessions, live item stats,
 room/category browsing with drill-down, real-time theft alerts with
-dismiss, alert history, and per-account settings - all protected by
-Supabase Row Level Security now that real accounts exist.
+dismiss, alert history, per-account settings, and now item
+registration + exit-scan theft detection (Simulated mode) from the
+Scan tab - all protected by Supabase Row Level Security now that real
+accounts exist. The Scan flow was verified against live data before
+being committed: a full register → assign → exit-scan →
+theft-alert-logged pass through the real UI, using a throwaway test
+account and test rows that were deleted afterward.
 
 Not yet built:
+- **Real RFID hardware on mobile.** See `hardware/README.md` - a
+  phone's NFC can't read the long-range UHF tags this project uses at
+  all (different radio tech entirely), so this would need an external
+  Bluetooth reader accessory, a specific model chosen, and leaving
+  Expo Go for a custom dev build. None of that is set up yet.
 - **Real (background/closed-app) push notifications.** Theft alerts
   currently notify you locally - Settings → Notifications → "Theft
   alerts" - which works while the app is open or briefly
@@ -210,4 +238,3 @@ Not yet built:
   just app code - intentionally not set up, to keep the project
   simple.
 - **Password reset.** The login screen has no recovery flow yet.
-- Scanning/assigning from the phone itself (currently desktop-only)
