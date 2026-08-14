@@ -4,15 +4,17 @@ main.py
 Entry point for the Linen RFID Detection System.
 
 This version uses a graphical window (built with Python's built-in
-"tkinter" library) instead of a terminal. There is no real RFID
-hardware yet, so scanning is simulated: clicking "Scan (Simulated)"
-acts like an RFID reader picking up a tag, which is assumed to carry
-both a Tag ID and an Item Type already encoded on it (tag numbers
-don't have to be sequential, just like real RFID tags).
+"tkinter" library) instead of a terminal.
 
-Scanned items wait in a "pending" list until you click "Assign", which
-applies one Customer Name + Room Number to all of them at once - handy
-for registering several items for the same guest in one go.
+Two RFID checkpoints feed this app: an entry reader (registering new
+items into the pending list) and an exit reader (theft detection).
+Both are built on the same generic reader abstraction in hardware/ -
+by default (hardware_config.json missing or unconfigured) both are
+SimulatedReader instances, driven by the "Scan (Simulated)" button and
+the exit scanner's manual Tag ID field, exactly like before. Once real
+hardware is chosen and hardware_config.json points a role at a serial
+port, that same role starts scanning on its own in the background -
+see hardware/serial_reader.py for what's still a placeholder there.
 """
 
 import random
@@ -22,11 +24,13 @@ from tkinter import messagebox, ttk
 import alarm
 import database
 import detector
+from hardware import create_reader
+from hardware.simulated_reader import SimulatedReader
 from models import STATUS_IN_USE, STATUS_LAUNDRY, STATUS_STORAGE, LinenItem
 
-# The kinds of linen items a simulated scan can produce. A real RFID
-# tag would already have its item type encoded on it, so we just pick
-# one at random here instead of asking the user to type it in.
+# The kinds of linen items a simulated scan can produce. See
+# _resolve_item_type() below for why this is still a placeholder even
+# with real hardware.
 ITEM_TYPES = ["Bath Towel", "Hand Towel", "Washcloth", "Bedsheet", "Pillowcase", "Blanket"]
 
 
@@ -43,8 +47,26 @@ class LinenApp:
         # customer/room. Each entry is a (tag_id, item_type) tuple.
         self.pending_items = []
 
+        # RFID hardware - see hardware/ for the abstraction layer.
+        # Each role defaults to a SimulatedReader unless
+        # hardware_config.json configures a real serial port for it
+        # (see hardware_config.example.json).
+        self.entry_reader = create_reader("entry_reader")
+        self.exit_reader = create_reader("exit_reader")
+        self._connect_reader(self.entry_reader)
+        self._connect_reader(self.exit_reader)
+
         self._build_widgets()
         self._refresh_item_table()
+
+        # Disconnect hardware cleanly on close instead of leaving a
+        # serial port open until the process fully dies.
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Start the poll loop that drains both readers' queues. This
+        # is the only place tag reads (simulated or real) actually
+        # reach the GUI - see _poll_readers()'s docstring.
+        self._poll_readers()
 
     def _build_widgets(self):
         """Create and arrange all the widgets in the window."""
@@ -178,6 +200,46 @@ class LinenApp:
         )
         delete_button.pack(side="left", padx=5)
 
+    def _connect_reader(self, reader):
+        """
+        Connect and start a reader, showing a warning instead of
+        crashing the whole app if it fails - e.g. hardware_config.json
+        points at a COM port that isn't plugged in. The app stays
+        usable either way; that particular reader just won't produce
+        any tag reads until it's fixed and the app is restarted.
+        """
+        try:
+            reader.connect()
+            reader.start()
+        except Exception as error:
+            messagebox.showwarning(
+                f"{reader.role.replace('_', ' ').title()} unavailable",
+                f"Could not start the {reader.role.replace('_', ' ')}:\n\n{error}\n\n"
+                "Continuing without it - check hardware_config.json.",
+            )
+
+    def _on_close(self):
+        """Disconnect both readers cleanly (closing any open serial port) before exiting."""
+        self.entry_reader.disconnect()
+        self.exit_reader.disconnect()
+        self.root.destroy()
+
+    def _poll_readers(self):
+        """
+        Runs on a repeating timer (tkinter's root.after) to drain any
+        tag reads that have arrived since the last poll - from a
+        background thread for a real serial reader, or from a button
+        click / typed Tag ID for a simulated one. This is the only
+        safe way to get reader data into the GUI: tkinter widgets can
+        only be touched from the main thread, and this method always
+        runs on it.
+        """
+        for tag_id in self.entry_reader.poll():
+            self._handle_entry_scan(tag_id)
+        for tag_id in self.exit_reader.poll():
+            self._handle_exit_scan(tag_id)
+        self.root.after(150, self._poll_readers)
+
     def _generate_tag_id(self):
         """
         Make up a Tag ID the way a simulated RFID scan would produce
@@ -195,18 +257,51 @@ class LinenApp:
         """
         Called when the user clicks "Scan (Simulated)".
 
-        Acts like an RFID reader picking up a new tag: generates a
-        Tag ID and Item Type (as if they were already encoded on the
-        tag) and adds the item to the pending list, waiting to be
-        assigned to a customer and room.
+        Only does anything while the entry reader is running in
+        simulated mode - generates a Tag ID and pushes it through the
+        same queue a real reader would use, so _handle_entry_scan()
+        below is the single code path either way.
         """
+        if not isinstance(self.entry_reader, SimulatedReader):
+            messagebox.showinfo(
+                "Real reader active",
+                "The entry reader is configured for real hardware in "
+                "hardware_config.json - it scans automatically. This button "
+                "only does something in simulated mode.",
+            )
+            return
+
         tag_id = self._generate_tag_id()
-        item_type = random.choice(ITEM_TYPES)
+        self.entry_reader.simulate_scan(tag_id)
+
+    def _handle_entry_scan(self, tag_id):
+        """
+        Called for every tag read from the entry reader - whether it
+        came from a real scan or the "Scan (Simulated)" button. Adds
+        the tag to the pending list, waiting to be assigned to a
+        customer and room.
+        """
+        item_type = self._resolve_item_type(tag_id)
 
         self.pending_items.append((tag_id, item_type))
         self.pending_tree.insert("", tk.END, values=(tag_id, item_type))
 
         self.status_label.config(text=f"Scanned {tag_id} ({item_type}). Added to pending list.")
+
+    def _resolve_item_type(self, tag_id):
+        """
+        Decide what kind of item a scanned tag represents.
+
+        PLACEHOLDER: a real UHF tag typically only carries a Tag ID
+        (its EPC) - not a human-readable item type - so this needs a
+        real answer once hardware is chosen: either staff pick the
+        type at registration time (e.g. add a dropdown to the Assign
+        form below), or item type is looked up from a separate
+        tag_id -> item_type mapping maintained elsewhere. Until that's
+        decided, this just guesses randomly, the same way the old
+        fully-simulated version did.
+        """
+        return random.choice(ITEM_TYPES)
 
     def _on_remove_pending(self):
         """
@@ -276,25 +371,46 @@ class LinenApp:
 
     def _on_exit_scan(self):
         """
-        Called when a tag is scanned at the (simulated) exit reader.
+        Called when Enter is pressed or "Simulate Exit Scan" is
+        clicked in the exit scanner field.
 
-        Any tag detected here is treated as leaving the building, so
-        it's run through detector.py and, if flagged, alarm.py shows
-        a pop-up warning.
+        Only does anything while the exit reader is running in
+        simulated mode - pushes the typed Tag ID through the same
+        queue a real reader would use, so _handle_exit_scan() below is
+        the single code path either way.
         """
+        if not isinstance(self.exit_reader, SimulatedReader):
+            messagebox.showinfo(
+                "Real reader active",
+                "The exit reader is configured for real hardware in "
+                "hardware_config.json - it scans automatically. This field "
+                "only does something in simulated mode.",
+            )
+            return
+
         tag_id = self.exit_tag_entry.get().strip().upper()
 
         if not tag_id:
             messagebox.showwarning("Missing Tag ID", "Please enter a Tag ID.")
             return
 
+        self.exit_reader.simulate_scan(tag_id)
+
+        self.exit_tag_entry.delete(0, tk.END)
+        self.exit_tag_entry.focus()
+
+    def _handle_exit_scan(self, tag_id):
+        """
+        Called for every tag read from the exit reader - whether it
+        came from a real scan or the manual exit scanner field. Any
+        tag detected here is treated as leaving the building, so it's
+        run through detector.py and, if flagged, alarm.py shows a
+        pop-up warning.
+        """
         item = database.get_item_by_tag(tag_id)
 
         if detector.check_tag(tag_id, item):
             alarm.trigger_alarm(tag_id, item)
-
-        self.exit_tag_entry.delete(0, tk.END)
-        self.exit_tag_entry.focus()
 
     def _on_delete_selected(self):
         """

@@ -1,0 +1,8 @@
+{
+  "entry_reader": {
+    "type": "simulated"
+  },
+  "exit_reader": {
+    "type": "simulated"
+  }
+}

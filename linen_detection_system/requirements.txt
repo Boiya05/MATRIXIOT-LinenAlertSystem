@@ -11,3 +11,9 @@ supabase==2.31.0
 # without this, a packaged .exe can fail at runtime even though it
 # works fine when run from source.
 tzdata==2026.3
+
+# Serial (COM) port access for a real RFID reader - see hardware/serial_reader.py
+# and hardware_config.example.json. Not needed while hardware_config.json is
+# left unconfigured (or set to "simulated"), but listed here so it's ready to
+# go the moment real hardware is plugged in.
+pyserial==3.5

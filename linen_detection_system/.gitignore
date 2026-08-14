@@ -8,6 +8,12 @@ telegram_config.json
 # is fine to commit, the real file with your project URL/key is not.
 supabase_config.json
 
+# Same idea again for hardware config - hardware_config.example.json
+# (placeholders, defaults to fully simulated) is fine to commit, but
+# the real file is machine-specific (COM port numbers differ per PC),
+# so it's not committed either.
+hardware_config.json
+
 # The database holds real customer names and room numbers - keep it
 # local only, never commit it. Same reasoning for any exported CSV.
 data/*.db
