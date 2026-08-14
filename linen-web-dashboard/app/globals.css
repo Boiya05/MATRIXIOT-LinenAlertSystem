@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/*
+ * This dashboard is intentionally light-only for now (no dark theme
+ * has been designed for it, unlike the mobile app). Without this,
+ * browsers on a dark-mode OS apply their own dark styling to native
+ * form controls - which is exactly what caused white-on-white input
+ * text: the input's text color followed the OS's dark preference
+ * while its background stayed explicitly white. Forcing color-scheme
+ * here (rather than leaving it to remain unset) stops that.
+ */
+:root {
+  color-scheme: light;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: #99e6e6;
+  color: #06474d;
+}
