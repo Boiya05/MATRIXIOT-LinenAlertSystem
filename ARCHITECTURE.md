@@ -4,7 +4,7 @@
 > - **`linen-mobile-app-v2/` is now the primary operational app**, per the supervisor-reviewed architecture. It has a **Scan** tab that registers items and runs the exit-scan check, in Simulated mode (works everywhere) or a real USB reader mode (Android + OTG cable, needs a dev-client build - see its `hardware/README.md`).
 > - **`linen_detection_system/`** (desktop) is now a secondary/legacy scanning terminal, not the only writer - see its `README.md`.
 > - **`linen-web-dashboard/`** is a new Next.js app (deployed on Vercel) that didn't exist when this document was written - live dashboard, inventory, alert history, and its own Scan page (same Simulated + real-hardware pattern, using the Web Serial API instead of USB Host). See its `README.md`.
-> - **Blynk's role is still unconfirmed** - flagged in the [Pilferage Detection Architecture](.) interpretation doc and not yet resolved.
+> - **Blynk's role is resolved**: a Supabase database trigger, not app code - see `BLYNK_SETUP.md` at the repo root. Fires a Blynk push notification on every new `theft_alerts` row, regardless of which app logged it.
 >
 > Treat each app's own `README.md` as the current source of truth; this file is kept for the parts of the original teardown (RLS setup, Realtime wiring, general Supabase schema) that are still accurate, not as an up-to-date map of what writes where.
 
