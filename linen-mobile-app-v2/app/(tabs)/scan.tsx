@@ -18,24 +18,12 @@ import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { checkTag } from '@/lib/detector';
 
-// The kinds of linen items a simulated scan can produce - mirrors the
-// desktop app's ITEM_TYPES exactly, for the same reason (see
-// resolveItemType() below).
+// The kinds of linen items this app tracks - mirrors the desktop
+// app's ITEM_TYPES exactly. A real UHF tag only carries a Tag ID (its
+// EPC), not a human-readable item type, so staff pick it from this
+// list at scan time (see the pill selector in RegisterSection below)
+// rather than it being guessed or looked up automatically.
 const ITEM_TYPES = ['Bath Towel', 'Hand Towel', 'Washcloth', 'Bedsheet', 'Pillowcase', 'Blanket'];
-
-/**
- * Decide what kind of item a scanned tag represents.
- *
- * PLACEHOLDER: a real UHF tag typically only carries a Tag ID (its
- * EPC) - not a human-readable item type - so this needs a real answer
- * once hardware is chosen: either staff pick the type at registration
- * time, or item type is looked up from a separate mapping maintained
- * elsewhere. Until that's decided, this guesses randomly - same
- * placeholder as the desktop app's and web dashboard's equivalents.
- */
-function resolveItemType(): string {
-  return ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
-}
 
 async function generateTagId(pendingTagIds: string[]): Promise<string> {
   const allItems = await getAllItems();
@@ -137,24 +125,65 @@ function ReaderModeSwitch({
   );
 }
 
+/**
+ * Lets staff pick which kind of item is about to be scanned - a
+ * horizontal row of pills rather than a native picker, since it's a
+ * short fixed list and this matches the segmented-control style
+ * already used elsewhere in this app (e.g. the theme picker in
+ * Settings), without adding a new dependency.
+ */
+function ItemTypePicker({ value, onChange }: { value: string; onChange: (itemType: string) => void }) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.itemTypeRow}>
+      {ITEM_TYPES.map((itemType) => {
+        const selected = itemType === value;
+        return (
+          <PressableScale key={itemType} onPress={() => onChange(itemType)}>
+            <View
+              style={[
+                styles.itemTypePill,
+                { borderColor: colors.border, backgroundColor: selected ? colors.tint : 'transparent' },
+              ]}>
+              <ThemedText style={{ color: selected ? colors.background : colors.textSecondary, fontSize: 12.5 }}>
+                {itemType}
+              </ThemedText>
+            </View>
+          </PressableScale>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 function RegisterSection() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
 
   const [pending, setPending] = useState<{ tagId: string; itemType: string }[]>([]);
+  const [selectedItemType, setSelectedItemType] = useState(ITEM_TYPES[0]);
   const [customerName, setCustomerName] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const handleTag = useCallback((tagId: string) => {
-    setPending((current) => {
-      if (current.some((p) => p.tagId === tagId)) return current;
-      return [...current, { tagId, itemType: resolveItemType() }];
-    });
-    setStatus(`Scanned ${tagId}. Added to pending list.`);
-  }, []);
+  // Depends on selectedItemType so a fresh closure (carrying the
+  // currently-picked type) reaches useReader's poll loop every time
+  // the selection changes - see hooks/use-reader.ts's onTagRef, which
+  // is refreshed every render specifically so this works.
+  const handleTag = useCallback(
+    (tagId: string) => {
+      setPending((current) => {
+        if (current.some((p) => p.tagId === tagId)) return current;
+        return [...current, { tagId, itemType: selectedItemType }];
+      });
+      setStatus(`Scanned ${tagId}. Added to pending list.`);
+    },
+    [selectedItemType]
+  );
 
   const reader = useReader('entry_reader', handleTag);
 
@@ -221,6 +250,13 @@ function RegisterSection() {
         />
       }>
       {reader.error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{reader.error}</ThemedText>}
+
+      <View>
+        <ThemedText style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
+          Item type - applies to the next tag scanned
+        </ThemedText>
+        <ItemTypePicker value={selectedItemType} onChange={setSelectedItemType} />
+      </View>
 
       {reader.mode === 'simulated' ? (
         <PressableScale
@@ -455,6 +491,16 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
+  },
+  itemTypeRow: {
+    flexDirection: 'row',
+  },
+  itemTypePill: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginRight: 6,
   },
   scanButton: {
     borderWidth: 1.5,

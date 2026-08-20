@@ -8,25 +8,12 @@ import { getAllItems, getItemByTag, logTheftAlert, saveLinenItem, type LinenItem
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { checkTag } from '@/lib/detector';
 
-// The kinds of linen items a simulated scan can produce - mirrors the
-// desktop app's main.py ITEM_TYPES exactly, for the same reason (see
-// resolveItemType() below).
+// The kinds of linen items this app tracks - mirrors the desktop
+// app's main.py ITEM_TYPES exactly. A real UHF tag only carries a Tag
+// ID (its EPC), not a human-readable item type, so staff pick it from
+// this list at scan time (the dropdown in RegisterSection below)
+// rather than it being guessed or looked up automatically.
 const ITEM_TYPES = ['Bath Towel', 'Hand Towel', 'Washcloth', 'Bedsheet', 'Pillowcase', 'Blanket'];
-
-/**
- * Decide what kind of item a scanned tag represents.
- *
- * PLACEHOLDER: a real UHF tag typically only carries a Tag ID (its
- * EPC) - not a human-readable item type - so this needs a real answer
- * once hardware is chosen: either staff pick the type at registration
- * time (a dropdown here), or item type is looked up from a separate
- * tag_id -> item_type mapping maintained elsewhere. Until that's
- * decided, this guesses randomly - same placeholder, same reasoning,
- * as the desktop app's main.py::_resolve_item_type().
- */
-function resolveItemType(): string {
-  return ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
-}
 
 async function generateTagId(pendingTagIds: string[]): Promise<string> {
   const allItems = await getAllItems();
@@ -107,19 +94,27 @@ function ReaderModeSwitch({
 
 function RegisterSection() {
   const [pending, setPending] = useState<{ tagId: string; itemType: string }[]>([]);
+  const [selectedItemType, setSelectedItemType] = useState(ITEM_TYPES[0]);
   const [customerName, setCustomerName] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const handleTag = useCallback((tagId: string) => {
-    setPending((current) => {
-      if (current.some((p) => p.tagId === tagId)) return current; // ignore duplicate reads of the same tag
-      return [...current, { tagId, itemType: resolveItemType() }];
-    });
-    setStatus(`Scanned ${tagId}. Added to pending list.`);
-  }, []);
+  // Depends on selectedItemType so a fresh closure (carrying the
+  // currently-picked type) reaches useReader's poll loop every time
+  // the selection changes - see hooks/use-reader.ts's onTagRef, which
+  // is refreshed every render specifically so this works.
+  const handleTag = useCallback(
+    (tagId: string) => {
+      setPending((current) => {
+        if (current.some((p) => p.tagId === tagId)) return current; // ignore duplicate reads of the same tag
+        return [...current, { tagId, itemType: selectedItemType }];
+      });
+      setStatus(`Scanned ${tagId}. Added to pending list.`);
+    },
+    [selectedItemType]
+  );
 
   const reader = useReader('entry_reader', handleTag);
 
@@ -191,6 +186,23 @@ function RegisterSection() {
       {reader.error && (
         <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{reader.error}</p>
       )}
+
+      <div className="mb-3">
+        <label className="mb-1 block text-xs font-medium text-slate-500">
+          Item type - applies to the next tag scanned
+        </label>
+        <select
+          value={selectedItemType}
+          onChange={(e) => setSelectedItemType(e.target.value)}
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
+        >
+          {ITEM_TYPES.map((itemType) => (
+            <option key={itemType} value={itemType}>
+              {itemType}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {reader.mode === 'simulated' && (
         <button

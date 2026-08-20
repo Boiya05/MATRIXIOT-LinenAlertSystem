@@ -28,9 +28,10 @@ from hardware import create_reader
 from hardware.simulated_reader import SimulatedReader
 from models import STATUS_IN_USE, STATUS_LAUNDRY, STATUS_STORAGE, LinenItem
 
-# The kinds of linen items a simulated scan can produce. See
-# _resolve_item_type() below for why this is still a placeholder even
-# with real hardware.
+# The kinds of linen items this app tracks. A real UHF tag only
+# carries a Tag ID (its EPC), not a human-readable item type, so staff
+# pick the type from this list at scan time - see the Item Type
+# dropdown next to "Scan (Simulated)" and _handle_entry_scan() below.
 ITEM_TYPES = ["Bath Towel", "Hand Towel", "Washcloth", "Bedsheet", "Pillowcase", "Blanket"]
 
 
@@ -78,11 +79,17 @@ class LinenApp:
         scan_button = ttk.Button(scan_frame, text="Scan (Simulated)", command=self._on_scan_simulated)
         scan_button.pack(side="left")
 
-        ttk.Label(
-            scan_frame,
-            text="Each scan picks up a random Tag ID + Item Type, like a real RFID tag would.",
-            wraplength=400,
-        ).pack(side="left", padx=10)
+        # A real UHF tag only carries a Tag ID - it doesn't say what
+        # the item actually is. Staff pick that here before scanning;
+        # whatever's selected applies to the next tag read, from
+        # either this button or a real reader (see
+        # _handle_entry_scan()). Stays on the last-picked value after
+        # each scan, so scanning several of the same item type in a
+        # row doesn't need reselecting every time.
+        ttk.Label(scan_frame, text="Item Type:").pack(side="left", padx=(10, 4))
+        self.item_type_combo = ttk.Combobox(scan_frame, values=ITEM_TYPES, state="readonly", width=14)
+        self.item_type_combo.current(0)
+        self.item_type_combo.pack(side="left")
 
         # --- Pending scans: items scanned but not yet assigned ---
         ttk.Label(self.root, text="Pending Items (scanned, not yet assigned):").pack(
@@ -278,30 +285,16 @@ class LinenApp:
         """
         Called for every tag read from the entry reader - whether it
         came from a real scan or the "Scan (Simulated)" button. Adds
-        the tag to the pending list, waiting to be assigned to a
-        customer and room.
+        the tag to the pending list (with whatever Item Type is
+        currently selected in the dropdown), waiting to be assigned to
+        a customer and room.
         """
-        item_type = self._resolve_item_type(tag_id)
+        item_type = self.item_type_combo.get()
 
         self.pending_items.append((tag_id, item_type))
         self.pending_tree.insert("", tk.END, values=(tag_id, item_type))
 
         self.status_label.config(text=f"Scanned {tag_id} ({item_type}). Added to pending list.")
-
-    def _resolve_item_type(self, tag_id):
-        """
-        Decide what kind of item a scanned tag represents.
-
-        PLACEHOLDER: a real UHF tag typically only carries a Tag ID
-        (its EPC) - not a human-readable item type - so this needs a
-        real answer once hardware is chosen: either staff pick the
-        type at registration time (e.g. add a dropdown to the Assign
-        form below), or item type is looked up from a separate
-        tag_id -> item_type mapping maintained elsewhere. Until that's
-        decided, this just guesses randomly, the same way the old
-        fully-simulated version did.
-        """
-        return random.choice(ITEM_TYPES)
 
     def _on_remove_pending(self):
         """

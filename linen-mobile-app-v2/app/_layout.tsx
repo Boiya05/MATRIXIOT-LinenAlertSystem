@@ -8,6 +8,7 @@ import 'react-native-reanimated';
 import { Colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
 import { ThemePreferenceProvider } from '@/contexts/theme-preference-context';
+import { useAuthDeepLink } from '@/hooks/use-auth-deep-link';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { configureNotifications } from '@/lib/notifications';
 
@@ -27,11 +28,19 @@ configureNotifications();
  * that ad-hoc approach fights the router's own anchor/redirect logic
  * and was the cause of landing on the tabs screen even when logged
  * out. Stack.Protected is the pattern the router expects for this.
+ *
+ * The isPasswordRecovery branch is checked BEFORE the plain "has a
+ * session" branch - a password-reset deep link produces a real
+ * session (see hooks/use-auth-deep-link.ts), and without this check
+ * first, that session would route straight into the main app instead
+ * of the "set a new password" screen it's actually supposed to reach.
  */
 function RootNavigator() {
-  const { session, loading } = useAuth();
+  const { session, loading, isPasswordRecovery } = useAuth();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+
+  useAuthDeepLink();
 
   if (loading) {
     // Still checking for an existing session on launch - avoid
@@ -45,11 +54,15 @@ function RootNavigator() {
 
   return (
     <Stack>
-      <Stack.Protected guard={!session}>
+      <Stack.Protected guard={isPasswordRecovery}>
+        <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!isPasswordRecovery && !session}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       </Stack.Protected>
 
-      <Stack.Protected guard={!!session}>
+      <Stack.Protected guard={!isPasswordRecovery && !!session}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack.Protected>
