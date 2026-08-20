@@ -168,16 +168,6 @@ continuous-inventory mode - which reports the same tag many times a
 second while it's in range - doesn't log a duplicate theft alert for
 every single one of those reads.
 
-## Known follow-up
-
-**Realtime replication is only enabled for `theft_alerts` in the
-current Supabase project, not `linen_items`.** The dashboard's
-Inventory page still loads correctly (a normal one-time fetch), but
-won't auto-update if an item's status changes elsewhere - refresh the
-page to see the latest. To make it fully live, enable Realtime for
-`linen_items` in **Supabase Studio → Database → Replication** (a
-toggle, not a code change).
-
 ## Current status
 
 Working: login, live dashboard stats, live theft alerts with dismiss,
@@ -193,9 +183,6 @@ account and test rows that were deleted afterward.
 Not yet built:
 - Multi-property support (see the root `ARCHITECTURE.md` for the
   `organization_id` design this would use)
-- Role-based permissions (currently, any authenticated account has
-  full read/write access - same open item flagged for the mobile app;
-  now more relevant, since this dashboard can write data too)
 - Editing an already-registered item's details (status changes and
   new registrations are covered; fixing a mistake on an existing item
   still needs the desktop app's Edit dialog)
