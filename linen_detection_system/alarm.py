@@ -3,13 +3,15 @@ alarm.py
 
 Responsible for alerting staff when detector.py flags a possible
 theft. Shows a pop-up warning window using tkinter, and also sends a
-Telegram message to your phone via a Telegram bot.
+WhatsApp message to your phone via Twilio's WhatsApp Sandbox.
 
-The Telegram bot token and chat ID are kept in telegram_config.json
-(NOT in this file), so the real credentials never end up hardcoded in
-source code. See telegram_config.example.json for the expected format.
+The Twilio credentials are kept in whatsapp_config.json (NOT in this
+file), so the real credentials never end up hardcoded in source code.
+See whatsapp_config.example.json for the expected format and the
+desktop app's README for how to get a sandbox set up.
 """
 
+import base64
 import json
 import os
 import sys
@@ -37,48 +39,64 @@ def _get_base_dir():
 
 
 BASE_DIR = _get_base_dir()
-TELEGRAM_CONFIG_PATH = os.path.join(BASE_DIR, "telegram_config.json")
+WHATSAPP_CONFIG_PATH = os.path.join(BASE_DIR, "whatsapp_config.json")
 
 
-def _load_telegram_config():
+def _load_whatsapp_config():
     """
-    Read the Telegram bot token and chat ID from telegram_config.json.
+    Read the Twilio account SID, auth token, and phone numbers from
+    whatsapp_config.json.
 
     Returns:
-        dict or None: {"bot_token": ..., "chat_id": ...}, or None if
-        the file is missing or can't be parsed.
+        dict or None: {"account_sid": ..., "auth_token": ...,
+        "from_number": ..., "to_number": ...}, or None if the file is
+        missing or can't be parsed.
     """
-    if not os.path.exists(TELEGRAM_CONFIG_PATH):
+    if not os.path.exists(WHATSAPP_CONFIG_PATH):
         return None
 
     try:
-        with open(TELEGRAM_CONFIG_PATH, "r", encoding="utf-8") as config_file:
+        with open(WHATSAPP_CONFIG_PATH, "r", encoding="utf-8") as config_file:
             return json.load(config_file)
     except (OSError, json.JSONDecodeError):
         return None
 
 
-def _send_telegram_message(text):
+def _send_whatsapp_message(text):
     """
-    Send a plain text message to your phone through the Telegram bot.
+    Send a plain text message to your phone through Twilio's WhatsApp
+    API.
 
     This is best-effort: if the config file is missing or the request
-    fails (e.g. no internet connection), it prints a warning instead
-    of crashing the program - a failed Telegram alert shouldn't stop
-    the pop-up warning from still appearing.
+    fails (e.g. no internet connection, or the phone hasn't joined the
+    Twilio sandbox), it prints a warning instead of crashing the
+    program - a failed WhatsApp alert shouldn't stop the pop-up
+    warning from still appearing.
     """
-    config = _load_telegram_config()
+    config = _load_whatsapp_config()
     if not config:
-        print("Telegram not configured - skipping Telegram alert. See telegram_config.example.json.")
+        print("WhatsApp not configured - skipping WhatsApp alert. See whatsapp_config.example.json.")
         return
 
-    url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
-    data = urllib.parse.urlencode({"chat_id": config["chat_id"], "text": text}).encode("utf-8")
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{config['account_sid']}/Messages.json"
+    data = urllib.parse.urlencode(
+        {"From": config["from_number"], "To": config["to_number"], "Body": text}
+    ).encode("utf-8")
+
+    # Twilio's API uses HTTP Basic Auth (Account SID as the username,
+    # Auth Token as the password) rather than a bearer token - built
+    # by hand here rather than pulling in the official `twilio`
+    # package, the same reasoning as using plain urllib for Telegram
+    # before: one HTTP call doesn't need a whole SDK dependency.
+    credentials = base64.b64encode(f"{config['account_sid']}:{config['auth_token']}".encode("utf-8")).decode(
+        "ascii"
+    )
+    request = urllib.request.Request(url, data=data, headers={"Authorization": f"Basic {credentials}"})
 
     try:
-        urllib.request.urlopen(url, data=data, timeout=5)
+        urllib.request.urlopen(request, timeout=5)
     except Exception as error:
-        print(f"Failed to send Telegram alert: {error}")
+        print(f"Failed to send WhatsApp alert: {error}")
 
 
 def _log_alert_to_supabase(tag_id, item, message):
@@ -86,8 +104,8 @@ def _log_alert_to_supabase(tag_id, item, message):
     Save this alert to the theft_alerts table so the mobile app's Home
     screen can show it live via Supabase Realtime.
 
-    Best-effort, same as _send_telegram_message: a logging failure
-    (e.g. no internet) shouldn't stop the pop-up or Telegram alert.
+    Best-effort, same as _send_whatsapp_message: a logging failure
+    (e.g. no internet) shouldn't stop the pop-up or WhatsApp alert.
     """
     try:
         database.log_theft_alert(tag_id, item, message)
@@ -98,7 +116,7 @@ def _log_alert_to_supabase(tag_id, item, message):
 def trigger_alarm(tag_id, item=None):
     """
     Warn about a tag detected at the exit reader: shows a pop-up
-    window on screen and sends a matching Telegram message.
+    window on screen and sends a matching WhatsApp message.
 
     Args:
         tag_id (str): The tag ID that triggered the alarm.
@@ -131,8 +149,8 @@ def trigger_alarm(tag_id, item=None):
     # if we called the network sends after it, they wouldn't go out
     # until the pop-up was dismissed. Sending both on background
     # threads first lets everything go out at the same time.
-    telegram_text = f"🚨 THEFT ALERT 🚨\n\n{details}"
-    threading.Thread(target=_send_telegram_message, args=(telegram_text,), daemon=True).start()
+    whatsapp_text = f"🚨 THEFT ALERT 🚨\n\n{details}"
+    threading.Thread(target=_send_whatsapp_message, args=(whatsapp_text,), daemon=True).start()
     threading.Thread(
         target=_log_alert_to_supabase, args=(tag_id, item, alert_message), daemon=True
     ).start()

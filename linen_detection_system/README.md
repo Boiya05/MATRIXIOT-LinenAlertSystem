@@ -6,7 +6,7 @@ defaults to simulated buttons in a pop-up window - but the app is built
 around a generic hardware abstraction (see **Hardware setup** below) so a
 real serial UHF reader can be plugged in later without touching the rest
 of the app. Theft alerts show up as both an on-screen warning and a
-Telegram message to your phone. Data is stored in a shared Supabase
+WhatsApp message to your phone. Data is stored in a shared Supabase
 database, so the same items are visible from this desktop app and the
 mobile companion app.
 
@@ -17,7 +17,7 @@ linen_detection_system/
 ├── main.py                       # Program entry point - opens the GUI window
 ├── database.py                   # Saves/reads linen items via the Supabase database
 ├── detector.py                   # Theft-detection logic (exit-scan rule)
-├── alarm.py                      # Pop-up + Telegram alerts for flagged scans
+├── alarm.py                      # Pop-up + WhatsApp alerts for flagged scans
 ├── models.py                     # Defines data structures (currently: LinenItem)
 ├── hardware/                     # RFID reader abstraction - see "Hardware setup" below
 │   ├── base.py                   # RFIDReader interface every reader implements
@@ -25,8 +25,8 @@ linen_detection_system/
 │   ├── serial_reader.py          # Generic serial transport + isolated protocol placeholder
 │   └── reader_factory.py         # Builds the right reader per role from hardware_config.json
 ├── requirements.txt              # Python package dependencies
-├── telegram_config.json          # Your real Telegram bot token + chat ID (not committed)
-├── telegram_config.example.json  # Template showing the expected format
+├── whatsapp_config.json          # Your real Twilio credentials (not committed)
+├── whatsapp_config.example.json  # Template showing the expected format
 ├── supabase_config.json          # Your real Supabase project URL + key (not committed)
 ├── supabase_config.example.json  # Template showing the expected format
 ├── hardware_config.json          # Your real reader config, per checkpoint (not committed)
@@ -46,8 +46,8 @@ linen_detection_system/
   pip install -r requirements.txt
   ```
 
-- Telegram alerts use only Python's built-in `urllib`, no extra package
-  needed there.
+- WhatsApp alerts use only Python's built-in `urllib`/`base64`, no
+  extra package needed there.
 
 ## How to run (PowerShell)
 
@@ -97,7 +97,7 @@ linen_detection_system/
   with something).
 - A flagged scan triggers `alarm.py`:
   - An on-screen "⚠ THEFT ALERT ⚠" pop-up with the item's details
-  - A matching message sent to your phone via your Telegram bot
+  - A matching WhatsApp message sent to your phone via Twilio
 
 Close the window to exit the program.
 
@@ -137,44 +137,71 @@ this up (or re-set it up on another machine):
 `supabase_config.json` is listed in `.gitignore` so it's never
 committed - only `supabase_config.example.json` (with placeholder
 values) is meant to be shared/committed. Handle this file with the
-same care as `telegram_config.json`.
+same care as `whatsapp_config.json`.
 
 If `supabase_config.json` is missing or the connection fails, the app
 shows a clear pop-up on startup explaining the problem instead of
 crashing with a raw error.
 
-## Telegram alerts setup
+## WhatsApp alerts setup
 
-Theft alerts are sent to your phone through a Telegram bot you create
-and control. To set this up (or re-set it up, e.g. after regenerating
-your bot token):
+Theft alerts are sent to your phone through Twilio's **WhatsApp
+Sandbox** - a free tier meant for personal/development use, not for
+messaging your own guests or customers (it only reaches numbers that
+have explicitly joined your sandbox). To set this up:
 
-1. In Telegram, message **@BotFather**, send `/newbot`, and follow the
-   prompts to get a bot token (looks like `123456:ABC-...`).
-2. Search for your new bot by its username and send it any message
-   (e.g. "hi") so it's allowed to message you back.
-3. Find your chat ID by visiting this URL in a browser (with your token
-   filled in) right after messaging the bot:
-   `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-   Look for `"chat":{"id": ...}` in the response - that number is your
-   chat ID.
-4. Copy `telegram_config.example.json` to `telegram_config.json` and
-   fill in your real `bot_token` and `chat_id`:
+1. Create a free account at [twilio.com](https://www.twilio.com).
+2. In the Twilio Console, go to **Messaging → Try it out → Send a
+   WhatsApp message** to activate the sandbox. You'll be given a
+   Twilio phone number and a join code that looks like
+   `join <two-words>`.
+3. From the phone that should receive alerts, send that exact join
+   code as a WhatsApp message to the sandbox number shown. Twilio
+   confirms once it's joined - this step only needs doing once per
+   phone number, but sandbox sessions can expire after a period of
+   inactivity, at which point you'll need to rejoin.
+4. From the Twilio Console's dashboard, copy your **Account SID** and
+   **Auth Token** (**Account → API keys & tokens**, or right on the
+   main Console homepage).
+5. Copy `whatsapp_config.example.json` to `whatsapp_config.json` and
+   fill in your real values:
 
    ```json
    {
-     "bot_token": "123456:ABC-your-real-token",
-     "chat_id": "111222333"
+     "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "auth_token": "your_twilio_auth_token",
+     "from_number": "whatsapp:+14155238886",
+     "to_number": "whatsapp:+10000000000"
    }
    ```
 
-`telegram_config.json` is listed in `.gitignore` so it's never committed
-alongside source code - only `telegram_config.example.json` (with
-placeholder values) is meant to be shared/committed.
+   `from_number` is Twilio's sandbox number - double check it matches
+   exactly what's shown in your Console, it's usually
+   `+14155238886` but confirm rather than assume. `to_number` is the
+   phone that joined the sandbox in step 3, in international format
+   with a `whatsapp:` prefix, e.g. `whatsapp:+15551234567`.
 
-If `telegram_config.json` is missing or invalid, `alarm.py` just prints
-a warning and skips the Telegram message - the on-screen pop-up still
+`whatsapp_config.json` is listed in `.gitignore` so it's never
+committed alongside source code - only `whatsapp_config.example.json`
+(with placeholder values) is meant to be shared/committed.
+
+If `whatsapp_config.json` is missing or invalid, `alarm.py` just prints
+a warning and skips the WhatsApp message - the on-screen pop-up still
 works either way.
+
+**Not yet tested against a real Twilio account** - the request-building
+logic (URL, Basic Auth header, form-encoded body) was verified against
+Twilio's documented API shape with a mocked network call, but there's
+no live Twilio account available to confirm an actual message
+delivers. If it doesn't work on the first try, check the terminal for
+the printed error - it'll show Twilio's actual response.
+
+**Sandbox limits worth knowing:** only reaches numbers that have
+joined via the join code, sessions can expire and need rejoining, and
+this isn't the path to messaging guests/customers directly - that
+would need the full WhatsApp Business Platform (Meta business
+verification + approved message templates + per-message cost),
+deliberately not set up here to keep this simple.
 
 ## Hardware setup
 
@@ -266,7 +293,8 @@ Everything described above is implemented and working:
   serial transport built out and ready for a real reader once one is
   chosen - only its protocol parsing is still a placeholder
 - **detector.py** - flags exit scans based on registration + status
-- **alarm.py** - pop-up warning + Telegram notification
+- **alarm.py** - pop-up warning + WhatsApp notification (via Twilio's
+  WhatsApp Sandbox - see **WhatsApp alerts setup**)
 
 The mobile companion app (`linen-mobile-app-v2`) shares the same
 Supabase tables for live viewing (Home stats, rooms/categories, and
@@ -282,6 +310,6 @@ Possible next steps:
   setup**'s open question)
 - Real push notifications on mobile (needs an EAS development build +
   Apple Developer account - see the mobile app's README)
-- A real WhatsApp notification channel (bigger project - needs the
-  WhatsApp Business API or a paid provider like Twilio)
+- Confirming the WhatsApp alert actually delivers against a real
+  Twilio account (see the caveat in **WhatsApp alerts setup**)
 - A history/log view of past (not just active) theft alerts
