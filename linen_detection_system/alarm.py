@@ -2,13 +2,21 @@
 alarm.py
 
 Responsible for alerting staff when detector.py flags a possible
-theft. Shows a pop-up warning window using tkinter, and also sends a
-WhatsApp message to your phone via Twilio's WhatsApp Sandbox.
+theft. Shows a pop-up warning window using tkinter, and sends both:
+- A Telegram message (full alert details - Telegram has no template
+  restriction, so this is the channel that actually carries the real
+  tag/customer/room/item breakdown).
+- A WhatsApp message via Twilio's WhatsApp Sandbox (a generic "check
+  the app" ping only - Twilio's sandbox requires a fixed, pre-approved
+  Content Template on a Trial account, so it can't carry the real
+  details - see WHATSAPP_TEMPLATE_CONTENT_SID below).
 
-The Twilio credentials are kept in whatsapp_config.json (NOT in this
-file), so the real credentials never end up hardcoded in source code.
-See whatsapp_config.example.json for the expected format and the
-desktop app's README for how to get a sandbox set up.
+Both sets of credentials are kept in their own config files (NOT in
+this file), so real credentials never end up hardcoded in source code:
+telegram_config.json / telegram_config.example.json and
+whatsapp_config.json / whatsapp_config.example.json. Either channel is
+independently optional - if one config file is missing, that channel
+is just skipped (printed as a warning), the other still fires.
 """
 
 import base64
@@ -39,7 +47,49 @@ def _get_base_dir():
 
 
 BASE_DIR = _get_base_dir()
+TELEGRAM_CONFIG_PATH = os.path.join(BASE_DIR, "telegram_config.json")
 WHATSAPP_CONFIG_PATH = os.path.join(BASE_DIR, "whatsapp_config.json")
+
+
+def _load_telegram_config():
+    """
+    Read the Telegram bot token and chat ID from telegram_config.json.
+
+    Returns:
+        dict or None: {"bot_token": ..., "chat_id": ...}, or None if
+        the file is missing or can't be parsed.
+    """
+    if not os.path.exists(TELEGRAM_CONFIG_PATH):
+        return None
+
+    try:
+        with open(TELEGRAM_CONFIG_PATH, "r", encoding="utf-8") as config_file:
+            return json.load(config_file)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _send_telegram_message(text):
+    """
+    Send a plain text message to your phone through the Telegram bot.
+
+    This is best-effort: if the config file is missing or the request
+    fails (e.g. no internet connection), it prints a warning instead
+    of crashing the program - a failed Telegram alert shouldn't stop
+    the pop-up warning from still appearing.
+    """
+    config = _load_telegram_config()
+    if not config:
+        print("Telegram not configured - skipping Telegram alert. See telegram_config.example.json.")
+        return
+
+    url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
+    data = urllib.parse.urlencode({"chat_id": config["chat_id"], "text": text}).encode("utf-8")
+
+    try:
+        urllib.request.urlopen(url, data=data, timeout=5)
+    except Exception as error:
+        print(f"Failed to send Telegram alert: {error}")
 
 # Twilio's WhatsApp Sandbox rejects free-form message text (error
 # 21654 "ContentSid Required") - in testing, this happened even right
@@ -152,7 +202,8 @@ def _log_alert_to_supabase(tag_id, item, message):
 def trigger_alarm(tag_id, item=None):
     """
     Warn about a tag detected at the exit reader: shows a pop-up
-    window on screen and sends a matching WhatsApp message.
+    window on screen and sends a matching Telegram message (full
+    details) and WhatsApp message (generic ping).
 
     Args:
         tag_id (str): The tag ID that triggered the alarm.
@@ -195,8 +246,12 @@ def trigger_alarm(tag_id, item=None):
     # directly - the real destination for full details is the app
     # itself (this pop-up, or the mobile/web apps), which is exactly
     # what this message points people to.
+    telegram_text = f"🚨 THEFT ALERT 🚨\n\n{details}"
+    threading.Thread(target=_send_telegram_message, args=(telegram_text,), daemon=True).start()
+
     whatsapp_text = "🚨 Theft Alert! Check the app to see what was stolen."
     threading.Thread(target=_send_whatsapp_message, args=(whatsapp_text,), daemon=True).start()
+
     threading.Thread(
         target=_log_alert_to_supabase, args=(tag_id, item, alert_message), daemon=True
     ).start()
