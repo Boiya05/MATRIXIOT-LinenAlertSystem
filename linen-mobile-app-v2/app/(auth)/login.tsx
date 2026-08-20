@@ -86,6 +86,10 @@ export default function LoginScreen() {
               )}
             </PressableScale>
 
+            <Link href="/forgot-password" style={styles.link}>
+              <ThemedText style={{ color: colors.tint, fontSize: 13 }}>Forgot password?</ThemedText>
+            </Link>
+
             <Link href="/signup" style={styles.link}>
               <ThemedText style={{ color: colors.tint, fontSize: 13 }}>
                 {"Don't have an account? Sign up"}

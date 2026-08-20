@@ -72,7 +72,10 @@ shows manually.
 
 **Login / Sign Up** - the app opens to a login screen. New accounts
 sign up with an email + password. Sessions persist across restarts, so
-you only need to log in once per install.
+you only need to log in once per install. **Forgot password?** sends a
+reset link by email - tapping it opens the app directly to a "set a
+new password" screen. See **Password reset setup** below for one
+required Supabase dashboard step before this works.
 
 **Home** - live stats (Total / In Use / Laundry / Storage) and a
 scrollable theft-alerts section. New alerts appear automatically while
@@ -217,6 +220,142 @@ way while testing. Consider turning off "Confirm email" under
 **Authentication → Sign In / Providers → Email** for a smoother local
 testing loop.
 
+## Role-based permissions (staff vs. viewer)
+
+The setup above gives *every* logged-in account full read/write access
+to `linen_items` and `theft_alerts` - fine when you're the only user,
+a real gap once other people have accounts. This adds a `user_roles`
+table and narrows write access (registering items, dismissing alerts,
+editing status) to accounts explicitly marked `staff`; everyone
+authenticated can still *view* everything, same as before - only
+writing is now gated.
+
+Run this once in the Supabase SQL Editor, applies system-wide (desktop
+app, mobile app, web dashboard all read/write the same project, so
+this isn't something to repeat per app):
+
+```sql
+-- A missing row here = viewer by default. Nobody gets write access
+-- automatically just by signing up, unlike the "any authenticated
+-- user" policies being replaced below.
+create table if not exists user_roles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'viewer' check (role in ('viewer', 'staff')),
+  updated_at timestamptz not null default now()
+);
+
+alter table user_roles enable row level security;
+
+-- Users can see their own role (so an app could show/hide staff-only
+-- controls) - deliberately NO insert/update/delete policy for regular
+-- users. Granting or changing a role only happens here, in the SQL
+-- Editor (or Supabase's Table Editor) by someone with real database
+-- access - never something an app itself can do, or self-promotion to
+-- "staff" would defeat the entire point.
+create policy "Users can view their own role"
+  on user_roles for select
+  using (auth.uid() = user_id);
+
+-- Replace the "any authenticated user" write policies with "staff only"
+drop policy if exists "Authenticated users can insert linen items" on linen_items;
+create policy "Staff can insert linen items"
+  on linen_items for insert
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'));
+
+drop policy if exists "Authenticated users can update linen items" on linen_items;
+create policy "Staff can update linen items"
+  on linen_items for update
+  using (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'))
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'));
+
+drop policy if exists "Authenticated users can delete linen items" on linen_items;
+create policy "Staff can delete linen items"
+  on linen_items for delete
+  using (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'));
+
+drop policy if exists "Authenticated users can insert theft alerts" on theft_alerts;
+create policy "Staff can insert theft alerts"
+  on theft_alerts for insert
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'));
+
+drop policy if exists "Authenticated users can update theft alerts" on theft_alerts;
+create policy "Staff can update theft alerts"
+  on theft_alerts for update
+  using (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'))
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'));
+
+-- The SELECT ("view") policies on linen_items/theft_alerts are
+-- untouched - every logged-in account can still see everything.
+
+-- Grant yourself staff access - skip this and you'd lose the ability
+-- to register items or dismiss alerts the moment the policies above
+-- take effect. Replace the email with your real account's if different.
+insert into user_roles (user_id, role)
+select id, 'staff' from auth.users where email = 'weihan_05@hotmail.com'
+on conflict (user_id) do update set role = 'staff';
+```
+
+**To add another staff account later** (e.g. a real hotel employee),
+run just the last statement again with their email instead - no need
+to re-run the whole block.
+
+**What happens to a non-staff (`viewer`) account today**: they can log
+into any of the three apps and see everything - stats, inventory,
+alerts, history - completely normally. If they try to register an
+item, dismiss an alert, or change a status, the write is silently
+rejected by Postgres (RLS denies it before it reaches the table) and
+the app shows whatever generic error message that specific action
+already has - none of the three apps currently show a friendlier
+"you don't have permission" message or hide write controls for
+viewers. That's a real, known gap in the UI layer (not the security
+layer, which is solid) - worth building once there's an actual
+non-staff account to test it against.
+
+## Password reset setup
+
+**One required step in the Supabase dashboard** - without it, the
+reset email still sends, but tapping its link won't open the app the
+way it's supposed to:
+
+1. Go to **Supabase Dashboard → Authentication → URL Configuration**.
+2. Under **Redirect URLs**, add:
+   ```
+   linenmobileappv2://reset-password
+   ```
+3. Save.
+
+Supabase silently ignores a custom `redirectTo` passed to
+`resetPasswordForEmail()` unless it's in this allow-list - it falls
+back to the project's default Site URL instead, with no error at
+request time, which makes this easy to miss until you actually click
+a reset link and it goes somewhere unexpected.
+
+**How the flow works**, for reference:
+- `contexts/auth-context.tsx`'s `requestPasswordReset()` calls
+  Supabase's `resetPasswordForEmail()` - **verified working against
+  the real project** (confirmed the API call succeeds; a real email
+  was sent).
+- The emailed link opens the app via its `linenmobileappv2://` scheme.
+  `hooks/use-auth-deep-link.ts` catches it (cold start via
+  `Linking.getInitialURL()`, or warm start via `Linking.addEventListener`),
+  extracts the token/code from the link, and establishes a session by
+  hand - Supabase's `detectSessionInUrl` client option is a web-only
+  concept (there's no browser URL bar on a phone to read from), so
+  this step doesn't happen automatically the way it would on web.
+- That session change fires a `PASSWORD_RECOVERY` auth event, tracked
+  as `isPasswordRecovery` in the auth context - `app/_layout.tsx`
+  checks this *before* its normal "has a session → show the main app"
+  check, so a recovery link correctly routes to
+  `app/reset-password.tsx` instead of straight into the tabs.
+- Submitting a new password calls `updateUser()`, then signs out so
+  the next login uses the new password through the normal flow.
+
+**Not yet verified**: the actual deep-link click-through (email → tap
+link → app opens to the reset screen with a valid session). That needs
+a real device receiving a real email and tapping it, which isn't
+something this environment can do - the email-sending half is
+confirmed working; the receiving half needs testing on your phone.
+
 ## Current status
 
 Working: login/signup with persistent sessions, live item stats,
@@ -246,9 +385,6 @@ Not yet built / not yet confirmed:
   management software to read selected data - the doc calls for this,
   Supabase is structured to support it, but the layer itself (what
   Vercel would host) isn't built.
-- **Blynk's role** is still unconfirmed - see `ARCHITECTURE.md` at the
-  repo root for why this needs a direct answer before building around
-  it.
 - **Real (background/closed-app) push notifications.** Theft alerts
   currently notify you locally - Settings → Notifications → "Theft
   alerts" - which works while the app is open or briefly
@@ -259,4 +395,6 @@ Not yet built / not yet confirmed:
   Firebase/FCM), which is real infrastructure outside this repo, not
   just app code - intentionally not set up, to keep the project
   simple.
-- **Password reset.** The login screen has no recovery flow yet.
+- **On-device verification of the password reset deep link.** The
+  email-sending half is confirmed working; tapping the actual link on
+  a phone hasn't been tested yet - see **Password reset setup**.
