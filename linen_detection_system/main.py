@@ -72,6 +72,21 @@ class LinenApp:
     def _build_widgets(self):
         """Create and arrange all the widgets in the window."""
 
+        # --- Operator: who's using this terminal right now ---
+        # This app has no login screen (see database.py's module
+        # docstring - it authenticates as service_role, not as a
+        # specific person), so there's no automatic "who" the way the
+        # mobile/web apps get from a signed-in session. Typing a name
+        # here is optional but, if filled in, gets attached to every
+        # action taken from this window in the linen_item_events audit
+        # trail (see _log_event() below) - left blank, those events
+        # just record no actor rather than a guess.
+        operator_frame = ttk.Frame(self.root, padding=(10, 8, 10, 0))
+        operator_frame.pack(fill="x")
+        ttk.Label(operator_frame, text="Operator Name (for the audit trail):").pack(side="left")
+        self.operator_entry = ttk.Entry(operator_frame, width=25)
+        self.operator_entry.pack(side="left", padx=(6, 0))
+
         # --- Scan section: simulates an RFID reader detecting a tag ---
         scan_frame = ttk.Frame(self.root, padding=10)
         scan_frame.pack(fill="x")
@@ -206,6 +221,23 @@ class LinenApp:
             actions_frame, text="Delete Selected", command=self._on_delete_selected
         )
         delete_button.pack(side="left", padx=5)
+
+    def _get_operator_label(self):
+        """The typed Operator Name, or None if left blank - see the Operator field's comment in _build_widgets()."""
+        name = self.operator_entry.get().strip()
+        return name or None
+
+    def _log_event(self, tag_id, event_type, **kwargs):
+        """
+        Best-effort audit-trail write - see database.log_item_event().
+        Never blocks or raises past this point: a failure here just
+        means this one action won't show up in the audit trail, not
+        that the action itself (which already happened) should fail.
+        """
+        try:
+            database.log_item_event(tag_id, event_type, actor_label=self._get_operator_label(), **kwargs)
+        except Exception as error:
+            print(f"Failed to log audit event: {error}")
 
     def _connect_reader(self, reader):
         """
@@ -349,6 +381,14 @@ class LinenApp:
                 item_type=item_type,
             )
             database.save_linen_item(item)
+            self._log_event(
+                tag_id,
+                "registered",
+                new_status=item.status,
+                customer_name=customer_name,
+                room_number=room_number,
+                detail=item_type,
+            )
 
         assigned_count = len(self.pending_items)
 
@@ -403,7 +443,7 @@ class LinenApp:
         item = database.get_item_by_tag(tag_id)
 
         if detector.check_tag(tag_id, item):
-            alarm.trigger_alarm(tag_id, item)
+            alarm.trigger_alarm(tag_id, item, actor_label=self._get_operator_label())
 
     def _on_delete_selected(self):
         """
@@ -433,6 +473,14 @@ class LinenApp:
             return
 
         database.delete_linen_item(tag_id)
+        self._log_event(
+            tag_id,
+            "deleted",
+            old_status=status,
+            customer_name=customer_name,
+            room_number=room_number,
+            detail=item_type,
+        )
         self.status_label.config(text=f"Deleted {tag_id}.")
         self._refresh_item_table()
 
@@ -450,8 +498,19 @@ class LinenApp:
             messagebox.showwarning("No Item Selected", "Select an item in the table first.")
             return
 
-        tag_id = self.tree.item(selected[0], "values")[0]
+        tag_id, customer_name, room_number, item_type, old_status = self.tree.item(
+            selected[0], "values"
+        )
         database.update_item_status(tag_id, new_status)
+        self._log_event(
+            tag_id,
+            "status_changed",
+            old_status=old_status,
+            new_status=new_status,
+            customer_name=customer_name,
+            room_number=room_number,
+            detail=item_type,
+        )
         self.status_label.config(text=f"{tag_id} marked as {new_status}.")
         self._refresh_item_table()
 
@@ -528,6 +587,25 @@ class LinenApp:
                 status=status,
             )
             database.save_linen_item(updated_item)
+
+            # Note what actually changed, so the audit trail says
+            # something more useful than just "edited".
+            changes = []
+            if new_customer_name != customer_name:
+                changes.append(f"customer {customer_name!r} -> {new_customer_name!r}")
+            if new_room_number != room_number:
+                changes.append(f"room {room_number!r} -> {new_room_number!r}")
+            if new_item_type != item_type:
+                changes.append(f"item type {item_type!r} -> {new_item_type!r}")
+
+            self._log_event(
+                tag_id,
+                "edited",
+                new_status=status,
+                customer_name=new_customer_name,
+                room_number=new_room_number,
+                detail="; ".join(changes) if changes else None,
+            )
 
             self.status_label.config(text=f"Updated {tag_id}.")
             self._refresh_item_table()

@@ -30,6 +30,28 @@ export interface AlertEvent {
   timestamp: string;
 }
 
+export type ItemEventType =
+  | 'registered'
+  | 'edited'
+  | 'status_changed'
+  | 'deleted'
+  | 'alert_triggered'
+  | 'alert_dismissed';
+
+export interface ItemEvent {
+  id: number;
+  tagId: string;
+  eventType: ItemEventType;
+  oldStatus: string | null;
+  newStatus: string | null;
+  customerName: string | null;
+  roomNumber: string | null;
+  detail: string | null;
+  actorLabel: string | null;
+  sourceApp: 'desktop' | 'mobile' | 'web';
+  timestamp: string;
+}
+
 // Supabase columns are snake_case (matching the desktop app's SQL
 // tables); our TypeScript types are camelCase. These are the two
 // places that translate between them.
@@ -191,6 +213,51 @@ export async function dismissAlert(alertId: number): Promise<void> {
 
   if (error) {
     throw new Error(`Failed to dismiss alert: ${error.message}`);
+  }
+}
+
+/**
+ * Record one row in the linen_item_events audit trail - who did what
+ * to which tag, and when. Mirrors the desktop app's
+ * database.log_item_event() and the web dashboard's copy of this same
+ * function.
+ *
+ * The actor is read from the current Supabase Auth session rather
+ * than passed in, since every caller here already has one (this app
+ * requires login) - unlike the desktop app, which has no login and
+ * relies on a manually-typed Operator Name instead.
+ *
+ * This throws on failure like every other function here, but callers
+ * should treat it as best-effort (catch and log, don't let it block
+ * the action it's describing) - a missed audit row is far less bad
+ * than, say, a failed item registration.
+ */
+export async function logItemEvent(params: {
+  tagId: string;
+  eventType: ItemEventType;
+  oldStatus?: string | null;
+  newStatus?: string | null;
+  customerName?: string | null;
+  roomNumber?: string | null;
+  detail?: string | null;
+}): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+
+  const { error } = await supabase.from('linen_item_events').insert({
+    tag_id: params.tagId,
+    event_type: params.eventType,
+    old_status: params.oldStatus ?? null,
+    new_status: params.newStatus ?? null,
+    customer_name: params.customerName ?? null,
+    room_number: params.roomNumber ?? null,
+    detail: params.detail ?? null,
+    actor_id: userData.user?.id ?? null,
+    actor_label: userData.user?.email ?? null,
+    source_app: 'mobile',
+  });
+
+  if (error) {
+    throw new Error(`Failed to log item event: ${error.message}`);
   }
 }
 

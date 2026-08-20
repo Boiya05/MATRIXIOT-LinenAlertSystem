@@ -311,6 +311,86 @@ viewers. That's a real, known gap in the UI layer (not the security
 layer, which is solid) - worth building once there's an actual
 non-staff account to test it against.
 
+## Audit trail (who did what, and when)
+
+Before this, nothing recorded *who* registered an item, changed its
+status, edited it, deleted it, or dismissed an alert - the row was
+just silently overwritten, which is a real gap for a system whose
+whole point is proving what happened to a missing item. This adds an
+append-only `linen_item_events` table: every write path in all three
+apps now logs one row per action, alongside whatever it was already
+doing (registering, marking status, dismissing an alert, etc.) -
+nothing here changes what those actions do, only what gets recorded
+about them.
+
+Run this once in the Supabase SQL Editor - **requires the
+`user_roles` table from "Role-based permissions" above to already
+exist**, since the insert policy checks it the same way:
+
+```sql
+-- Append-only history of who did what to which tag, and when. Every
+-- registration, edit, status change, deletion, and alert
+-- trigger/dismissal writes one row here - the apps only ever INSERT
+-- into this table, never UPDATE or DELETE, so it stays a trustworthy
+-- record even if someone later "fixes" linen_items/theft_alerts.
+create table if not exists linen_item_events (
+  id bigint generated always as identity primary key,
+  tag_id text not null,
+  event_type text not null check (event_type in (
+    'registered', 'edited', 'status_changed', 'deleted',
+    'alert_triggered', 'alert_dismissed'
+  )),
+  old_status text,
+  new_status text,
+  customer_name text,
+  room_number text,
+  detail text,
+  actor_id uuid references auth.users(id) on delete set null,
+  actor_label text,
+  source_app text not null check (source_app in ('desktop', 'mobile', 'web')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists linen_item_events_tag_id_idx
+  on linen_item_events (tag_id, created_at desc);
+
+alter table linen_item_events enable row level security;
+
+-- Same visibility as linen_items/theft_alerts: any logged-in account
+-- can view the audit trail (it's part of "seeing everything" a
+-- viewer already gets), but only staff can write to it - matching
+-- exactly who's allowed to perform the actions being logged.
+create policy "Authenticated users can view item events"
+  on linen_item_events for select
+  using (auth.uid() is not null);
+
+create policy "Staff can insert item events"
+  on linen_item_events for insert
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role = 'staff'));
+```
+
+**Who writes what, and how "who" is known:**
+- Mobile and web: `actor_id`/`actor_label` come straight from the
+  signed-in Supabase session (`supabase.auth.getUser()`) - real,
+  verifiable identity, since both apps require login.
+- Desktop: there's still no login screen (it authenticates as
+  `service_role`, which bypasses this table's RLS entirely, same as
+  `linen_items`/`theft_alerts`), so there's no session to read an
+  identity from. A new **Operator Name** field at the top of the
+  window is typed in by hand instead and stamped onto every event from
+  that session - optional, and not verified against anything, so treat
+  desktop-originated `actor_label` values as a courtesy note, not proof
+  of identity, unlike mobile/web's.
+- Every write is best-effort: a failed audit-log write is caught and
+  printed/logged, never allowed to block or fail the actual action
+  (registering an item, dismissing an alert, etc.) it's describing.
+
+**Where to see it**: the web dashboard's new **Activity** page lists
+the 200 most recent events, searchable by tag/guest/room/actor, live
+via Realtime. Mobile and desktop don't have their own viewer for
+it - the web dashboard is already the "management reviews things from
+a browser" app, so that's where this lives.
+
 ## Password reset setup
 
 **One required step in the Supabase dashboard** - without it, the
@@ -364,13 +444,16 @@ dismiss, alert history, per-account settings, and item registration +
 exit-scan theft detection from the Scan tab, in both Simulated mode
 and (per the supervisor-reviewed architecture doc) a real USB reader
 mode via Android's USB Host API - all protected by Supabase Row Level
-Security now that real accounts exist. Simulated mode was verified
-against live data before being committed: a full register → assign →
-exit-scan → theft-alert-logged pass through the real UI, using a
-throwaway test account and test rows that were deleted afterward. USB
-reader mode was verified to compile and link correctly via a real
-development-client build, but not yet tested against physical
-hardware - see `hardware/README.md`.
+Security now that real accounts exist, and role-gated so only `staff`
+accounts can write. Every registration, edit, status change, deletion,
+and alert trigger/dismissal across all three apps also writes to an
+append-only audit trail - see **Audit trail** above. Simulated mode
+was verified against live data before being committed: a full
+register → assign → exit-scan → theft-alert-logged pass through the
+real UI, using a throwaway test account and test rows that were
+deleted afterward. USB reader mode was verified to compile and link
+correctly via a real development-client build, but not yet tested
+against physical hardware - see `hardware/README.md`.
 
 Not yet built / not yet confirmed:
 - **The real reader's protocol.** `hardware/usb-serial-reader.ts`'s

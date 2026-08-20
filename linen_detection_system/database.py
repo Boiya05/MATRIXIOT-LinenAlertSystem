@@ -36,6 +36,7 @@ from models import LinenItem
 
 TABLE_NAME = "linen_items"
 ALERTS_TABLE_NAME = "theft_alerts"
+EVENTS_TABLE_NAME = "linen_item_events"
 
 
 def _get_base_dir():
@@ -193,5 +194,61 @@ def log_theft_alert(tag_id, item=None, message=""):
             "room_number": item.room_number if item else "Unknown",
             "customer_name": item.customer_name if item else "Unknown",
             "message": message,
+        }
+    ).execute()
+
+
+def log_item_event(
+    tag_id,
+    event_type,
+    old_status=None,
+    new_status=None,
+    customer_name=None,
+    room_number=None,
+    detail=None,
+    actor_label=None,
+):
+    """
+    Record one row in the linen_item_events audit trail - who did
+    what to which tag, and when.
+
+    This app has no login screen (see this file's module docstring),
+    so there's no automatic "who" the way the mobile/web apps get from
+    a signed-in session - actor_label is whatever's typed into the
+    Operator Name field in the GUI (see main.py), or None if left
+    blank.
+
+    Args:
+        tag_id (str): The tag this event is about.
+        event_type (str): One of "registered", "edited",
+            "status_changed", "deleted", "alert_triggered",
+            "alert_dismissed" - matches the CHECK constraint on the
+            table, see the mobile app's README for the exact SQL.
+        old_status / new_status (str or None): The status before/after,
+            for "status_changed"; leave both None for event types
+            where status doesn't apply.
+        customer_name / room_number (str or None): Whoever/wherever the
+            item was assigned to at the time of this event.
+        detail (str or None): Free-text extra context that doesn't fit
+            a structured column - e.g. the item type, or a summary of
+            what an edit changed.
+        actor_label (str or None): Human-readable "who did this" - see
+            above.
+
+    This is meant to be best-effort at the call site (wrapped in
+    try/except there), the same as log_theft_alert: a failure to write
+    an audit row should never block or crash the action it describes.
+    """
+    get_client().table(EVENTS_TABLE_NAME).insert(
+        {
+            "tag_id": tag_id,
+            "event_type": event_type,
+            "old_status": old_status,
+            "new_status": new_status,
+            "customer_name": customer_name,
+            "room_number": room_number,
+            "detail": detail,
+            "actor_label": actor_label,
+            "source_app": "desktop",
         }
     ).execute()

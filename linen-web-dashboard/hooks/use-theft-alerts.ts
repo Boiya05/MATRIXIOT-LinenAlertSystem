@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { dismissAlert, getActiveAlerts, type AlertEvent } from '@/data/linen-data';
+import { dismissAlert, getActiveAlerts, logItemEvent, type AlertEvent } from '@/data/linen-data';
 import { supabase } from '@/lib/supabase';
 
 export function useTheftAlerts() {
@@ -57,16 +57,30 @@ export function useTheftAlerts() {
 
   const dismiss = useCallback(
     async (alertId: number) => {
+      // Grab the alert's details before it's filtered out of local
+      // state below - needed for the audit-trail write after the
+      // dismiss succeeds.
+      const dismissedAlert = alerts.find((alert) => alert.id === alertId);
+
       setAlerts((current) => current.filter((alert) => alert.id !== alertId));
       try {
         await dismissAlert(alertId);
+        if (dismissedAlert) {
+          logItemEvent({
+            tagId: dismissedAlert.tagId,
+            eventType: 'alert_dismissed',
+            customerName: dismissedAlert.customerName,
+            roomNumber: dismissedAlert.roomNumber,
+            detail: dismissedAlert.itemType,
+          }).catch((err) => console.warn('Failed to log audit event:', err));
+        }
       } catch (err) {
         console.warn('Failed to dismiss alert:', err);
         setError("Couldn't dismiss that alert. Refresh to try again.");
         load();
       }
     },
-    [load]
+    [load, alerts]
   );
 
   return { alerts, loading, error, dismiss };

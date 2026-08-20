@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
-import { getAllItems, getItemByTag, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
+import { getAllItems, getItemByTag, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { checkTag } from '@/lib/detector';
@@ -224,6 +224,14 @@ function RegisterSection() {
           status: 'In Use',
         };
         await saveLinenItem(linenItem);
+        logItemEvent({
+          tagId: linenItem.tagId,
+          eventType: 'registered',
+          newStatus: linenItem.status,
+          customerName: linenItem.customerName,
+          roomNumber: linenItem.roomNumber,
+          detail: linenItem.itemType,
+        }).catch((err) => console.warn('Failed to log audit event:', err));
       }
       setStatus(`Assigned ${pending.length} item(s) to ${customerName.trim()}.`);
       setPending([]);
@@ -363,6 +371,14 @@ function ExitScannerSection() {
           ? `${item.itemType} (${tagId}) was detected at the exit scanner while marked ${item.status}.`
           : `Unregistered tag (${tagId}) was detected at the exit scanner.`;
         await logTheftAlert(tagId, item, message);
+        logItemEvent({
+          tagId,
+          eventType: 'alert_triggered',
+          oldStatus: item?.status ?? null,
+          customerName: item?.customerName ?? null,
+          roomNumber: item?.roomNumber ?? null,
+          detail: item?.itemType ?? null,
+        }).catch((err) => console.warn('Failed to log audit event:', err));
       }
 
       setLastResult({ tagId, flagged, item });

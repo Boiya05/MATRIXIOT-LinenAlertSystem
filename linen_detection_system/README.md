@@ -69,6 +69,17 @@ linen_detection_system/
 
 ## Expected behavior
 
+**Operator Name (for the audit trail):** an optional text field at the
+top of the window. This app has no login screen (see **Supabase
+setup** below - it authenticates as `service_role`, not as a specific
+person), so there's no automatic "who" the way the mobile/web apps get
+from a signed-in session. Type a name here and it's attached to every
+action taken from this window (registering, editing, changing status,
+deleting, triggering an alert) in the `linen_item_events` audit trail
+- leave it blank and those events just record no actor. See the mobile
+app's README ("Audit trail (who did what, and when)") for the full
+setup and what gets logged where.
+
 **Registering items (scan + batch assign):**
 - Click **Scan (Simulated)** to simulate an RFID reader picking up a tag.
   Each click adds a random Tag ID + Item Type to the **Pending Items**
@@ -321,6 +332,11 @@ Everything described above is implemented and working:
 - **alarm.py** - pop-up warning + WhatsApp notification, confirmed
   delivering via Twilio's WhatsApp Sandbox (a fixed-content template,
   not the actual alert details - see **WhatsApp alerts setup**)
+- **Audit trail** - every registration, edit, status change, deletion,
+  and alert trigger writes a row to `linen_item_events`, tagged with
+  the typed Operator Name if one was given - see the mobile app's
+  README for the full setup and the web dashboard's Activity page for
+  where to view it
 
 The mobile companion app (`linen-mobile-app-v2`) shares the same
 Supabase tables for live viewing (Home stats, rooms/categories, and

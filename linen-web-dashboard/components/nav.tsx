@@ -17,6 +17,7 @@ const LINKS = [
   { href: '/scan', label: 'Scan' },
   { href: '/inventory', label: 'Inventory' },
   { href: '/history', label: 'Alert history' },
+  { href: '/activity', label: 'Activity' },
 ];
 
 export function Nav() {

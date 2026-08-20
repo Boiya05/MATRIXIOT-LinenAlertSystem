@@ -199,7 +199,31 @@ def _log_alert_to_supabase(tag_id, item, message):
         print(f"Failed to log theft alert to Supabase: {error}")
 
 
-def trigger_alarm(tag_id, item=None):
+def _log_event_to_supabase(tag_id, item, actor_label):
+    """
+    Record this alert as an "alert_triggered" row in the
+    linen_item_events audit trail - see database.log_item_event().
+
+    Best-effort, same reasoning as _log_alert_to_supabase above: this
+    is a secondary record of the same event theft_alerts already
+    captures, so a failure here shouldn't affect the pop-up, the
+    notifications, or the theft_alerts row itself.
+    """
+    try:
+        database.log_item_event(
+            tag_id,
+            "alert_triggered",
+            old_status=item.status if item else None,
+            customer_name=item.customer_name if item else None,
+            room_number=item.room_number if item else None,
+            detail=item.item_type if item else None,
+            actor_label=actor_label,
+        )
+    except Exception as error:
+        print(f"Failed to log audit event: {error}")
+
+
+def trigger_alarm(tag_id, item=None, actor_label=None):
     """
     Warn about a tag detected at the exit reader: shows a pop-up
     window on screen and sends a matching Telegram message (full
@@ -210,6 +234,10 @@ def trigger_alarm(tag_id, item=None):
         item (LinenItem or None): The matching item's saved details,
             if this tag has been registered. If None, the tag isn't
             in the database at all.
+        actor_label (str or None): Whoever's operating the desktop
+            terminal right now (the Operator Name field in main.py),
+            for the linen_item_events audit trail - see
+            _log_event_to_supabase() below.
     """
     if item is not None:
         details = (
@@ -254,6 +282,10 @@ def trigger_alarm(tag_id, item=None):
 
     threading.Thread(
         target=_log_alert_to_supabase, args=(tag_id, item, alert_message), daemon=True
+    ).start()
+
+    threading.Thread(
+        target=_log_event_to_supabase, args=(tag_id, item, actor_label), daemon=True
     ).start()
 
     messagebox.showerror("⚠ THEFT ALERT ⚠", details)

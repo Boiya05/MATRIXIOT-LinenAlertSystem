@@ -35,6 +35,13 @@ the one running the Python app.
   filter and a search box (tag, guest, room, item type).
 - **Alert history** (`/history`) — every already-dismissed alert,
   newest first.
+- **Activity** (`/activity`) — the audit trail: who registered,
+  edited, moved, or deleted an item, and who triggered or cleared an
+  alert, across all three apps, newest first and searchable. See the
+  mobile app's README ("Audit trail (who did what, and when)") for the
+  SQL that creates the underlying `linen_item_events` table — same
+  shared-setup pattern as the RLS/Realtime SQL, only needs running
+  once per Supabase project, not once per app.
 
 ## Project structure
 
