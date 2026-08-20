@@ -4,7 +4,7 @@
 > - **`linen-mobile-app-v2/` is now the primary operational app**, per the supervisor-reviewed architecture. It has a **Scan** tab that registers items and runs the exit-scan check, in Simulated mode (works everywhere) or a real USB reader mode (Android + OTG cable, needs a dev-client build - see its `hardware/README.md`).
 > - **`linen_detection_system/`** (desktop) is now a secondary/legacy scanning terminal, not the only writer - see its `README.md`.
 > - **`linen-web-dashboard/`** is a new Next.js app (deployed on Vercel) that didn't exist when this document was written - live dashboard, inventory, alert history, and its own Scan page (same Simulated + real-hardware pattern, using the Web Serial API instead of USB Host). See its `README.md`.
-> - **Blynk's role is resolved**: a Supabase database trigger, not app code - see `BLYNK_SETUP.md` at the repo root. Fires a Blynk push notification on every new `theft_alerts` row, regardless of which app logged it.
+> - **Blynk was tried and removed.** It was wired up as a Supabase database trigger (no app code) and the HTTP call to Blynk's API consistently succeeded (`200`, confirmed via `net._http_response`), but the notification itself never reliably showed up despite working through the usual causes (event code, device/token mismatches). Rather than keep debugging an unofficial-feeling dead end, it was dropped in favor of what already worked. Alerts now go through **Telegram** (full detail, proven reliable, free) and **WhatsApp via Twilio** (a generic "check the app" ping, due to its own content-template restriction - see `linen_detection_system/README.md`'s "WhatsApp alerts setup").
 >
 > Treat each app's own `README.md` as the current source of truth; this file is kept for the parts of the original teardown (RLS setup, Realtime wiring, general Supabase schema) that are still accurate, not as an up-to-date map of what writes where.
 
@@ -13,7 +13,7 @@ This is a from-the-code (not from-the-README) walkthrough of your project, as it
 - **`linen_detection_system/`** — Python + Tkinter desktop app. Originally where all writing happened: registering items, changing status, running the exit scanner. Now a secondary scanning terminal, not the only one.
 - **`linen-mobile-app-v2/`** — Expo/React Native phone app. Originally a read-only viewer; now the primary operational app, with its own Scan tab.
 - **Supabase** (hosted Postgres + Auth + Realtime) — the only backend. There is no custom server you wrote; Supabase's own REST/websocket API *is* your API layer. Still accurate - `linen-web-dashboard/` reads/writes the same project, no new backend.
-- **Telegram Bot API** — external notification channel, called directly from the desktop app. Still accurate for the desktop app; Blynk's role as a possible alternative/addition is unresolved.
+- **Telegram Bot API** and **Twilio's WhatsApp API** — external notification channels, both called directly from the desktop app (`alarm.py`). Blynk was tried as a third channel and removed - see the note above.
 
 ---
 
