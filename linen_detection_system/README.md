@@ -175,11 +175,14 @@ have explicitly joined your sandbox). To set this up:
    }
    ```
 
-   `from_number` is Twilio's sandbox number - double check it matches
-   exactly what's shown in your Console, it's usually
-   `+14155238886` but confirm rather than assume. `to_number` is the
-   phone that joined the sandbox in step 3, in international format
-   with a `whatsapp:` prefix, e.g. `whatsapp:+15551234567`.
+   `from_number` is Twilio's sandbox number - **don't assume it's the
+   commonly-documented `+14155238886`, confirm it in your own Console**;
+   Twilio can assign a different sandbox number per account/region (a
+   real gotcha that cost real debugging time getting this working -
+   ours turned out to be a `+1737...` number, not the usual one).
+   `to_number` is the phone that joined the sandbox in step 3, in
+   international format with a `whatsapp:` prefix, e.g.
+   `whatsapp:+15551234567`.
 
 `whatsapp_config.json` is listed in `.gitignore` so it's never
 committed alongside source code - only `whatsapp_config.example.json`
@@ -189,12 +192,34 @@ If `whatsapp_config.json` is missing or invalid, `alarm.py` just prints
 a warning and skips the WhatsApp message - the on-screen pop-up still
 works either way.
 
-**Not yet tested against a real Twilio account** - the request-building
-logic (URL, Basic Auth header, form-encoded body) was verified against
-Twilio's documented API shape with a mocked network call, but there's
-no live Twilio account available to confirm an actual message
-delivers. If it doesn't work on the first try, check the terminal for
-the printed error - it'll show Twilio's actual response.
+**Confirmed working, but with a real content limitation worth knowing
+up front.** Twilio's WhatsApp Sandbox rejects free-form message text
+entirely (error `21654: ContentSid Required`) - not just outside the
+usual "24 hours since the user last messaged you" WhatsApp rule, it
+rejected it consistently even right after rejoining the sandbox. The
+fix that actually works: send one of Twilio's 3 built-in sandbox
+Content Templates instead of custom text. `alarm.py` uses the
+"Appointment Reminders" template's Content SID
+(`WHATSAPP_TEMPLATE_CONTENT_SID` near the top of the file) -
+**its wording is fixed** ("Reminder: Appt Tue Oct 29..."), not the
+actual alert details, because:
+- Trial accounts can't use Twilio's Content API to inspect or edit
+  templates (`"This feature is not available on a Trial account"`),
+  so there's no way to see or change what variables (if any) it
+  accepts from a Trial account.
+- Passing `ContentVariables` to try to fill in custom text had no
+  effect on this particular template - it appears to be fully static.
+
+**In practice this means WhatsApp becomes a "something happened, go
+check the app" ping, not a message with the actual item/room/customer
+details** - those are already fully visible in the desktop, mobile, and
+web apps the moment you open any of them. The full alert text is still
+printed to the terminal (`[WhatsApp alert - full text below...]`) for
+anyone watching the desktop app directly. If you want the real details
+in the WhatsApp message itself, either check Twilio's other 2 sandbox
+templates ("Order Notifications", "Verification Codes") for one with a
+usable variable, or upgrade past the Trial tier to create a real custom
+template through Content Template Builder.
 
 **Sandbox limits worth knowing:** only reaches numbers that have
 joined via the join code, sessions can expire and need rejoining, and
@@ -293,8 +318,9 @@ Everything described above is implemented and working:
   serial transport built out and ready for a real reader once one is
   chosen - only its protocol parsing is still a placeholder
 - **detector.py** - flags exit scans based on registration + status
-- **alarm.py** - pop-up warning + WhatsApp notification (via Twilio's
-  WhatsApp Sandbox - see **WhatsApp alerts setup**)
+- **alarm.py** - pop-up warning + WhatsApp notification, confirmed
+  delivering via Twilio's WhatsApp Sandbox (a fixed-content template,
+  not the actual alert details - see **WhatsApp alerts setup**)
 
 The mobile companion app (`linen-mobile-app-v2`) shares the same
 Supabase tables for live viewing (Home stats, rooms/categories, and
@@ -310,6 +336,7 @@ Possible next steps:
   setup**'s open question)
 - Real push notifications on mobile (needs an EAS development build +
   Apple Developer account - see the mobile app's README)
-- Confirming the WhatsApp alert actually delivers against a real
-  Twilio account (see the caveat in **WhatsApp alerts setup**)
+- Getting the actual alert details (item/room/customer) into the
+  WhatsApp message itself, instead of a fixed generic template - see
+  the content limitation in **WhatsApp alerts setup**
 - A history/log view of past (not just active) theft alerts

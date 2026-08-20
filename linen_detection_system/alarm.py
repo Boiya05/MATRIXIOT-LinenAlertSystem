@@ -41,6 +41,20 @@ def _get_base_dir():
 BASE_DIR = _get_base_dir()
 WHATSAPP_CONFIG_PATH = os.path.join(BASE_DIR, "whatsapp_config.json")
 
+# Twilio's WhatsApp Sandbox rejects free-form message text (error
+# 21654 "ContentSid Required") - in testing, this happened even right
+# after (re)joining the sandbox, so it isn't just the usual "only
+# free-form within 24 hours of the user's last message" WhatsApp rule
+# - this sandbox required a template every time. Content Sid below is
+# one of Twilio's 3 built-in sandbox templates ("Appointment
+# Reminders") - its wording is fixed ("Reminder: Appt...") and not
+# customizable on a Trial account (the Content API needed to inspect/
+# edit templates returns "not available on a Trial account"), so it
+# can't say the real alert details. It reliably delivers though, which
+# is what actually matters here - the real details are already fully
+# visible in the desktop/mobile/web apps by the time this arrives.
+WHATSAPP_TEMPLATE_CONTENT_SID = "HXfe5ab5f00277942d4d4200328b4d403c"
+
 
 def _load_whatsapp_config():
     """
@@ -64,15 +78,33 @@ def _load_whatsapp_config():
 
 def _send_whatsapp_message(text):
     """
-    Send a plain text message to your phone through Twilio's WhatsApp
-    API.
+    Send a WhatsApp message to your phone through Twilio's WhatsApp
+    Sandbox.
+
+    The actual WhatsApp message is NOT `text` - see the
+    WHATSAPP_TEMPLATE_CONTENT_SID comment above for why: the sandbox
+    only accepts a fixed, pre-approved template, not free-form
+    content. `text` is printed to the terminal so the real, full alert
+    is visible somewhere, even though it isn't what shows up on
+    WhatsApp.
 
     This is best-effort: if the config file is missing or the request
-    fails (e.g. no internet connection, or the phone hasn't joined the
-    Twilio sandbox), it prints a warning instead of crashing the
-    program - a failed WhatsApp alert shouldn't stop the pop-up
-    warning from still appearing.
+    fails (e.g. no internet connection), it prints a warning instead
+    of crashing the program - a failed WhatsApp alert shouldn't stop
+    the pop-up warning from still appearing.
     """
+    # Some Windows consoles (cp1252, not UTF-8) can't print emoji and
+    # raise UnicodeEncodeError - this print is purely diagnostic, so a
+    # console that can't display it should fall back to a safe form
+    # instead of crashing the alert flow.
+    try:
+        print(f"[WhatsApp alert - full text below; WhatsApp itself only shows a generic template]\n{text}")
+    except UnicodeEncodeError:
+        safe_text = text.encode(sys.stdout.encoding or "ascii", errors="replace").decode(
+            sys.stdout.encoding or "ascii"
+        )
+        print(f"[WhatsApp alert - full text below; WhatsApp itself only shows a generic template]\n{safe_text}")
+
     config = _load_whatsapp_config()
     if not config:
         print("WhatsApp not configured - skipping WhatsApp alert. See whatsapp_config.example.json.")
@@ -80,7 +112,11 @@ def _send_whatsapp_message(text):
 
     url = f"https://api.twilio.com/2010-04-01/Accounts/{config['account_sid']}/Messages.json"
     data = urllib.parse.urlencode(
-        {"From": config["from_number"], "To": config["to_number"], "Body": text}
+        {
+            "From": config["from_number"],
+            "To": config["to_number"],
+            "ContentSid": WHATSAPP_TEMPLATE_CONTENT_SID,
+        }
     ).encode("utf-8")
 
     # Twilio's API uses HTTP Basic Auth (Account SID as the username,
