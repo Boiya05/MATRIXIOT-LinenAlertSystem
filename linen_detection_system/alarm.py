@@ -185,7 +185,17 @@ def trigger_alarm(tag_id, item=None):
     # if we called the network sends after it, they wouldn't go out
     # until the pop-up was dismissed. Sending both on background
     # threads first lets everything go out at the same time.
-    whatsapp_text = f"🚨 THEFT ALERT 🚨\n\n{details}"
+    #
+    # Short and generic on purpose: the WhatsApp message itself can't
+    # actually show this text (Twilio's sandbox only sends a fixed
+    # template - see WHATSAPP_TEMPLATE_CONTENT_SID above), so there's
+    # no point building the full tag/customer/room/item breakdown here
+    # the way `details` does for the on-screen pop-up. This still gets
+    # printed to the terminal for anyone watching the desktop app
+    # directly - the real destination for full details is the app
+    # itself (this pop-up, or the mobile/web apps), which is exactly
+    # what this message points people to.
+    whatsapp_text = "🚨 Theft Alert! Check the app to see what was stolen."
     threading.Thread(target=_send_whatsapp_message, args=(whatsapp_text,), daemon=True).start()
     threading.Thread(
         target=_log_alert_to_supabase, args=(tag_id, item, alert_message), daemon=True
