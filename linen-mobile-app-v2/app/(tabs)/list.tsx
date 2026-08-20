@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { PressableScale } from '@/components/pressable-scale';
+import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
@@ -14,10 +16,17 @@ import {
   type TypeSummary,
 } from '@/data/linen-data';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useHasLoadedOnce } from '@/hooks/use-has-loaded-once';
 import { useLinenItems } from '@/hooks/use-linen-items';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
 const SEGMENTS: LinenStatus[] = ['In Use', 'Laundry', 'Storage'];
+
+const SEGMENT_EMOJI: Record<LinenStatus, string> = {
+  'In Use': '🛏️',
+  Laundry: '🧺',
+  Storage: '📦',
+};
 
 export default function ListViewScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -25,6 +34,7 @@ export default function ListViewScreen() {
   const border = useThemeColor({}, 'border');
 
   const { items, loading, error, refresh } = useLinenItems();
+  const hasLoadedOnce = useHasLoadedOnce(loading);
   const [selectedStatus, setSelectedStatus] = useState<LinenStatus>('In Use');
 
   const rooms = useMemo(() => getActiveRooms(items), [items]);
@@ -49,7 +59,7 @@ export default function ListViewScreen() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
       <View style={styles.header}>
-        <ThemedText type="title">Linen</ThemedText>
+        <ThemedText type="title">📋 Linen</ThemedText>
         <ThemedText style={{ color: colors.textSecondary }}>
           {isInUse
             ? `${rooms.length} room${rooms.length === 1 ? '' : 's'} currently holding linen`
@@ -61,7 +71,7 @@ export default function ListViewScreen() {
         {SEGMENTS.map((status) => {
           const active = status === selectedStatus;
           return (
-            <Pressable
+            <PressableScale
               key={status}
               onPress={() => setSelectedStatus(status)}
               style={[styles.segment, active && { backgroundColor: colors.tint }]}>
@@ -70,16 +80,20 @@ export default function ListViewScreen() {
                   styles.segmentText,
                   { color: active ? colors.background : colors.textSecondary },
                 ]}>
-                {status}
+                {SEGMENT_EMOJI[status]} {status}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           );
         })}
       </View>
 
       {error && <ThemedText style={[styles.errorText, { color: colors.danger }]}>{error}</ThemedText>}
 
-      {isInUse ? (
+      {!hasLoadedOnce ? (
+        <View style={styles.listContent}>
+          <SkeletonRowList />
+        </View>
+      ) : isInUse ? (
         <FlatList
           data={rooms}
           keyExtractor={(room) => room.roomNumber}
@@ -90,11 +104,9 @@ export default function ListViewScreen() {
             <RoomRow room={item} color={colors} border={border} iconColor={statusColor} />
           )}
           ListEmptyComponent={
-            !loading ? (
-              <ThemedText style={{ color: colors.textSecondary }}>
-                No rooms currently have linen in use.
-              </ThemedText>
-            ) : null
+            <ThemedText style={{ color: colors.textSecondary }}>
+              No rooms currently have linen in use.
+            </ThemedText>
           }
         />
       ) : (
@@ -115,11 +127,9 @@ export default function ListViewScreen() {
             />
           )}
           ListEmptyComponent={
-            !loading ? (
-              <ThemedText style={{ color: colors.textSecondary }}>
-                No items currently in {selectedStatus}.
-              </ThemedText>
-            ) : null
+            <ThemedText style={{ color: colors.textSecondary }}>
+              No items currently in {selectedStatus}.
+            </ThemedText>
           }
         />
       )}
@@ -139,25 +149,22 @@ function RoomRow({
   iconColor: string;
 }) {
   return (
-    <Pressable
+    <PressableScale
       onPress={() => router.push(`/room/${room.roomNumber}`)}
-      style={({ pressed }) => [
-        styles.rowCard,
-        { backgroundColor: color.cardBackground, borderColor: border, opacity: pressed ? 0.7 : 1 },
-      ]}>
+      style={[styles.rowCard, { backgroundColor: color.cardBackground, borderColor: border }]}>
       <View style={[styles.rowIconWrap, { backgroundColor: `${iconColor}22` }]}>
         <IconSymbol name="door.left.hand.open" size={20} color={iconColor} />
       </View>
 
       <View style={styles.rowTextWrap}>
-        <ThemedText type="defaultSemiBold">Room {room.roomNumber}</ThemedText>
+        <ThemedText type="defaultSemiBold">🚪 Room {room.roomNumber}</ThemedText>
         <ThemedText style={{ color: color.textSecondary, fontSize: 13 }}>
           {room.customerName} · {room.itemCount} item{room.itemCount === 1 ? '' : 's'}
         </ThemedText>
       </View>
 
       <IconSymbol name="chevron.right" size={16} color={color.textSecondary} />
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -177,14 +184,11 @@ function CategoryRow({
   iconColor: string;
 }) {
   return (
-    <Pressable
+    <PressableScale
       onPress={() =>
         router.push({ pathname: '/category', params: { status, itemType: category.itemType } })
       }
-      style={({ pressed }) => [
-        styles.rowCard,
-        { backgroundColor: color.cardBackground, borderColor: border, opacity: pressed ? 0.7 : 1 },
-      ]}>
+      style={[styles.rowCard, { backgroundColor: color.cardBackground, borderColor: border }]}>
       <View style={[styles.rowIconWrap, { backgroundColor: `${iconColor}22` }]}>
         <IconSymbol name={icon} size={20} color={iconColor} />
       </View>
@@ -198,7 +202,7 @@ function CategoryRow({
       </View>
 
       <IconSymbol name="chevron.right" size={16} color={color.textSecondary} />
-    </Pressable>
+    </PressableScale>
   );
 }
 

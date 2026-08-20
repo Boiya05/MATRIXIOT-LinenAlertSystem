@@ -20,7 +20,12 @@ export function useAlertHistory() {
         setAlerts(data);
         setError(null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => {
+        // Log the real error for debugging; show a generic message in
+        // the UI so raw backend error text never reaches the screen.
+        console.warn('Failed to load alert history:', err);
+        setError("Couldn't load alert history. Pull to refresh to try again.");
+      })
       .finally(() => setLoading(false));
   }, []);
 

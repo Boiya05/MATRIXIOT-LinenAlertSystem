@@ -29,6 +29,7 @@ const MAPPING = {
   'door.left.hand.open': 'meeting-room',
   'person.fill': 'person',
   'clock.fill': 'history',
+  'qrcode.viewfinder': 'qr-code-scanner',
 } as IconMapping;
 
 /**

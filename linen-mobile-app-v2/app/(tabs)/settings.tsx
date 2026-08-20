@@ -1,20 +1,30 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
+import { useThemePreference, type ThemePreference } from '@/contexts/theme-preference-context';
 import { getUserSettings, saveUserSettings } from '@/data/user-settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { ensureNotificationPermission, requestNotificationPermission } from '@/lib/notifications';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string; emoji: string }[] = [
+  { value: 'system', label: 'System', emoji: '🌓' },
+  { value: 'light', label: 'Light', emoji: '☀️' },
+  { value: 'dark', label: 'Dark', emoji: '🌙' },
+];
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const border = useThemeColor({}, 'border');
   const { user, signOut } = useAuth();
+  const { themePreference, setThemePreference } = useThemePreference();
 
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -27,6 +37,13 @@ export default function SettingsScreen() {
       .then((settings) => {
         setAlertsEnabled(settings.alertsEnabled);
         setSoundEnabled(settings.soundEnabled);
+        // Catches the case where "Theft alerts" was already saved as on
+        // from before notifications existed - the toggle below only
+        // requests permission on an actual off->on flip, which never
+        // happens for a setting that loads in already-on.
+        if (settings.alertsEnabled) {
+          ensureNotificationPermission();
+        }
       })
       .catch((err) => {
         console.warn('Failed to load settings:', err);
@@ -67,10 +84,47 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <ThemedText type="title">Settings</ThemedText>
+          <ThemedText type="title">⚙️ Settings</ThemedText>
         </View>
 
-        <SettingsSection title="Notifications">
+        <SettingsSection title="🎨 Appearance">
+          <View
+            style={[styles.row, styles.themeRow, { backgroundColor: colors.cardBackground, borderColor: border }]}>
+            <View style={styles.themeRowHeader}>
+              <View style={[styles.rowIconWrap, { backgroundColor: `${colors.tint}22` }]}>
+                <ThemedText style={styles.themeRowIcon}>🎨</ThemedText>
+              </View>
+              <View style={styles.rowTextWrap}>
+                <ThemedText type="defaultSemiBold">Theme</ThemedText>
+                <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  Choose how the app looks
+                </ThemedText>
+              </View>
+            </View>
+
+            <View style={[styles.themeSegmented, { borderColor: border }]}>
+              {THEME_OPTIONS.map((option) => {
+                const active = option.value === themePreference;
+                return (
+                  <PressableScale
+                    key={option.value}
+                    onPress={() => setThemePreference(option.value)}
+                    style={[styles.themeSegment, active && { backgroundColor: colors.tint }]}>
+                    <ThemedText
+                      style={[
+                        styles.themeSegmentText,
+                        { color: active ? colors.background : colors.textSecondary },
+                      ]}>
+                      {option.emoji} {option.label}
+                    </ThemedText>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          </View>
+        </SettingsSection>
+
+        <SettingsSection title="🔔 Notifications">
           <SettingsRow
             icon="bell.fill"
             label="Theft alerts"
@@ -82,7 +136,24 @@ export default function SettingsScreen() {
             ) : (
               <Switch
                 value={alertsEnabled}
-                onValueChange={(value) => updateSettings({ alertsEnabled: value, soundEnabled })}
+                onValueChange={(value) => {
+                  updateSettings({ alertsEnabled: value, soundEnabled });
+                  // Turning this on is the natural moment to ask for
+                  // notification permission - it's an explicit, in-context
+                  // action, not a surprise prompt on launch. If denied,
+                  // the toggle (and in-app alerts on Home) still work;
+                  // only the outside-the-app notification won't fire.
+                  if (value) {
+                    requestNotificationPermission().then((granted) => {
+                      if (!granted) {
+                        Alert.alert(
+                          'Notifications disabled',
+                          "You'll still see alerts on the Home screen, but to get notified outside the app, allow notifications for this app in your phone's Settings."
+                        );
+                      }
+                    });
+                  }
+                }}
               />
             )}
           </SettingsRow>
@@ -103,7 +174,7 @@ export default function SettingsScreen() {
           </SettingsRow>
         </SettingsSection>
 
-        <SettingsSection title="Account">
+        <SettingsSection title="👤 Account">
           <SettingsRow
             icon="person.fill"
             label={user?.email ?? 'Signed in'}
@@ -111,7 +182,7 @@ export default function SettingsScreen() {
             color={colors}
             border={border}
           />
-          <Pressable
+          <PressableScale
             onPress={handleSignOut}
             disabled={signingOut}
             style={[styles.row, styles.signOutRow, { backgroundColor: colors.cardBackground, borderColor: border }]}>
@@ -120,10 +191,10 @@ export default function SettingsScreen() {
             ) : (
               <ThemedText style={{ color: colors.danger, fontWeight: '600' }}>Log Out</ThemedText>
             )}
-          </Pressable>
+          </PressableScale>
         </SettingsSection>
 
-        <SettingsSection title="About">
+        <SettingsSection title="ℹ️ About">
           <SettingsRow
             icon="checkmark.seal.fill"
             label="Linen RFID Detection System"
@@ -221,5 +292,35 @@ const styles = StyleSheet.create({
   rowTextWrap: {
     flex: 1,
     gap: 2,
+  },
+  themeRow: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 14,
+  },
+  themeRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  themeRowIcon: {
+    fontSize: 18,
+  },
+  themeSegmented: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 3,
+    gap: 3,
+  },
+  themeSegment: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  themeSegmentText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

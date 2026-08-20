@@ -1,11 +1,14 @@
 # Linen RFID Detection System
 
 A Python project for detecting stolen linen items (towels, sheets, etc.)
-using RFID tags. This early version has no physical RFID hardware -
-scanning is simulated with buttons in a pop-up window, and theft alerts
-show up as both an on-screen warning and a Telegram message to your phone.
-Data is stored in a shared Supabase database, so the same items are
-visible from this desktop app and the mobile companion app.
+using RFID tags. There's no physical RFID reader wired in yet - scanning
+defaults to simulated buttons in a pop-up window - but the app is built
+around a generic hardware abstraction (see **Hardware setup** below) so a
+real serial UHF reader can be plugged in later without touching the rest
+of the app. Theft alerts show up as both an on-screen warning and a
+WhatsApp message to your phone. Data is stored in a shared Supabase
+database, so the same items are visible from this desktop app and the
+mobile companion app.
 
 ## Project structure
 
@@ -14,14 +17,21 @@ linen_detection_system/
 ├── main.py                       # Program entry point - opens the GUI window
 ├── database.py                   # Saves/reads linen items via the Supabase database
 ├── detector.py                   # Theft-detection logic (exit-scan rule)
-├── alarm.py                      # Pop-up + Telegram alerts for flagged scans
+├── alarm.py                      # Pop-up + WhatsApp alerts for flagged scans
 ├── models.py                     # Defines data structures (currently: LinenItem)
+├── hardware/                     # RFID reader abstraction - see "Hardware setup" below
+│   ├── base.py                   # RFIDReader interface every reader implements
+│   ├── simulated_reader.py       # Button/typed-input driven fake reader (today's default)
+│   ├── serial_reader.py          # Generic serial transport + isolated protocol placeholder
+│   └── reader_factory.py         # Builds the right reader per role from hardware_config.json
 ├── requirements.txt              # Python package dependencies
-├── telegram_config.json          # Your real Telegram bot token + chat ID (not committed)
-├── telegram_config.example.json  # Template showing the expected format
+├── whatsapp_config.json          # Your real Twilio credentials (not committed)
+├── whatsapp_config.example.json  # Template showing the expected format
 ├── supabase_config.json          # Your real Supabase project URL + key (not committed)
 ├── supabase_config.example.json  # Template showing the expected format
-├── .gitignore                    # Keeps the two files above out of git
+├── hardware_config.json          # Your real reader config, per checkpoint (not committed)
+├── hardware_config.example.json  # Template showing the expected format
+├── .gitignore                    # Keeps the real config files above out of git
 └── README.md                     # This file
 ```
 
@@ -36,8 +46,8 @@ linen_detection_system/
   pip install -r requirements.txt
   ```
 
-- Telegram alerts use only Python's built-in `urllib`, no extra package
-  needed there.
+- WhatsApp alerts use only Python's built-in `urllib`/`base64`, no
+  extra package needed there.
 
 ## How to run (PowerShell)
 
@@ -87,7 +97,7 @@ linen_detection_system/
   with something).
 - A flagged scan triggers `alarm.py`:
   - An on-screen "⚠ THEFT ALERT ⚠" pop-up with the item's details
-  - A matching message sent to your phone via your Telegram bot
+  - A matching WhatsApp message sent to your phone via Twilio
 
 Close the window to exit the program.
 
@@ -127,44 +137,173 @@ this up (or re-set it up on another machine):
 `supabase_config.json` is listed in `.gitignore` so it's never
 committed - only `supabase_config.example.json` (with placeholder
 values) is meant to be shared/committed. Handle this file with the
-same care as `telegram_config.json`.
+same care as `whatsapp_config.json`.
 
 If `supabase_config.json` is missing or the connection fails, the app
 shows a clear pop-up on startup explaining the problem instead of
 crashing with a raw error.
 
-## Telegram alerts setup
+## WhatsApp alerts setup
 
-Theft alerts are sent to your phone through a Telegram bot you create
-and control. To set this up (or re-set it up, e.g. after regenerating
-your bot token):
+Theft alerts are sent to your phone through Twilio's **WhatsApp
+Sandbox** - a free tier meant for personal/development use, not for
+messaging your own guests or customers (it only reaches numbers that
+have explicitly joined your sandbox). To set this up:
 
-1. In Telegram, message **@BotFather**, send `/newbot`, and follow the
-   prompts to get a bot token (looks like `123456:ABC-...`).
-2. Search for your new bot by its username and send it any message
-   (e.g. "hi") so it's allowed to message you back.
-3. Find your chat ID by visiting this URL in a browser (with your token
-   filled in) right after messaging the bot:
-   `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-   Look for `"chat":{"id": ...}` in the response - that number is your
-   chat ID.
-4. Copy `telegram_config.example.json` to `telegram_config.json` and
-   fill in your real `bot_token` and `chat_id`:
+1. Create a free account at [twilio.com](https://www.twilio.com).
+2. In the Twilio Console, go to **Messaging → Try it out → Send a
+   WhatsApp message** to activate the sandbox. You'll be given a
+   Twilio phone number and a join code that looks like
+   `join <two-words>`.
+3. From the phone that should receive alerts, send that exact join
+   code as a WhatsApp message to the sandbox number shown. Twilio
+   confirms once it's joined - this step only needs doing once per
+   phone number, but sandbox sessions can expire after a period of
+   inactivity, at which point you'll need to rejoin.
+4. From the Twilio Console's dashboard, copy your **Account SID** and
+   **Auth Token** (**Account → API keys & tokens**, or right on the
+   main Console homepage).
+5. Copy `whatsapp_config.example.json` to `whatsapp_config.json` and
+   fill in your real values:
 
    ```json
    {
-     "bot_token": "123456:ABC-your-real-token",
-     "chat_id": "111222333"
+     "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "auth_token": "your_twilio_auth_token",
+     "from_number": "whatsapp:+14155238886",
+     "to_number": "whatsapp:+10000000000"
    }
    ```
 
-`telegram_config.json` is listed in `.gitignore` so it's never committed
-alongside source code - only `telegram_config.example.json` (with
-placeholder values) is meant to be shared/committed.
+   `from_number` is Twilio's sandbox number - **don't assume it's the
+   commonly-documented `+14155238886`, confirm it in your own Console**;
+   Twilio can assign a different sandbox number per account/region (a
+   real gotcha that cost real debugging time getting this working -
+   ours turned out to be a `+1737...` number, not the usual one).
+   `to_number` is the phone that joined the sandbox in step 3, in
+   international format with a `whatsapp:` prefix, e.g.
+   `whatsapp:+15551234567`.
 
-If `telegram_config.json` is missing or invalid, `alarm.py` just prints
-a warning and skips the Telegram message - the on-screen pop-up still
+`whatsapp_config.json` is listed in `.gitignore` so it's never
+committed alongside source code - only `whatsapp_config.example.json`
+(with placeholder values) is meant to be shared/committed.
+
+If `whatsapp_config.json` is missing or invalid, `alarm.py` just prints
+a warning and skips the WhatsApp message - the on-screen pop-up still
 works either way.
+
+**Confirmed working, but with a real content limitation worth knowing
+up front.** Twilio's WhatsApp Sandbox rejects free-form message text
+entirely (error `21654: ContentSid Required`) - not just outside the
+usual "24 hours since the user last messaged you" WhatsApp rule, it
+rejected it consistently even right after rejoining the sandbox. The
+fix that actually works: send one of Twilio's 3 built-in sandbox
+Content Templates instead of custom text. `alarm.py` uses the
+"Appointment Reminders" template's Content SID
+(`WHATSAPP_TEMPLATE_CONTENT_SID` near the top of the file) -
+**its wording is fixed** ("Reminder: Appt Tue Oct 29..."), not the
+actual alert details, because:
+- Trial accounts can't use Twilio's Content API to inspect or edit
+  templates (`"This feature is not available on a Trial account"`),
+  so there's no way to see or change what variables (if any) it
+  accepts from a Trial account.
+- Passing `ContentVariables` to try to fill in custom text had no
+  effect on this particular template - it appears to be fully static.
+
+**In practice this means WhatsApp becomes a "something happened, go
+check the app" ping, not a message with the actual item/room/customer
+details** - those are already fully visible in the desktop, mobile, and
+web apps the moment you open any of them. The full alert text is still
+printed to the terminal (`[WhatsApp alert - full text below...]`) for
+anyone watching the desktop app directly. If you want the real details
+in the WhatsApp message itself, either check Twilio's other 2 sandbox
+templates ("Order Notifications", "Verification Codes") for one with a
+usable variable, or upgrade past the Trial tier to create a real custom
+template through Content Template Builder.
+
+**Sandbox limits worth knowing:** only reaches numbers that have
+joined via the join code, sessions can expire and need rejoining, and
+this isn't the path to messaging guests/customers directly - that
+would need the full WhatsApp Business Platform (Meta business
+verification + approved message templates + per-message cost),
+deliberately not set up here to keep this simple.
+
+## Hardware setup
+
+There are two RFID checkpoints in this app - an **entry reader** (used
+when registering new items) and an **exit reader** (used for theft
+detection) - and each is built on the same `hardware/` abstraction, so
+either one can be simulated or a real serial reader independently of
+the other.
+
+**How it's structured:**
+
+- `hardware/base.py` defines the `RFIDReader` interface every reader
+  implements: `connect()`, `disconnect()`, `start()`, `stop()`, and
+  `poll()`. `main.py` only ever talks to this interface - it doesn't
+  know or care whether a given reader is simulated or real.
+- `hardware/simulated_reader.py` is what both checkpoints use today.
+  It's driven directly by the GUI (the "Scan (Simulated)" button and
+  the exit scanner's typed Tag ID field) rather than any hardware.
+- `hardware/serial_reader.py` is the real-hardware path: a generic
+  serial (COM port) transport that opens the port and reads it on a
+  background thread. **The actual protocol - how to interpret the raw
+  bytes a specific reader model sends - is deliberately left as a
+  placeholder**, isolated in two clearly marked methods:
+  - `_send_startup_commands()` - some readers need a command sent
+    before they start streaming tag reads; this is a no-op until
+    filled in.
+  - `_parse_tag_from_frame()` - turns one raw frame of bytes into a
+    Tag ID string. The placeholder assumes plain newline-delimited
+    ASCII text, which works for simple modules but not typical UHF
+    readers (binary frames, checksums, multiple tags per burst, etc).
+
+  **Once a reader model is chosen, only these two methods need to be
+  rewritten** - the port-opening, threading, and everything else in
+  `main.py` stays exactly as-is.
+- `hardware/reader_factory.py` reads `hardware_config.json` and builds
+  a `SimulatedReader` or `SerialRFIDReader` for each role accordingly.
+
+**Switching a checkpoint to real hardware:**
+
+1. Copy `hardware_config.example.json` to `hardware_config.json` if
+   you haven't already.
+2. Set the role's `type` to `"serial"` and fill in its COM port (check
+   Windows Device Manager once the reader is plugged in) and baud rate:
+
+   ```json
+   {
+     "entry_reader": { "type": "simulated" },
+     "exit_reader": {
+       "type": "serial",
+       "port": "COM3",
+       "baud_rate": 115200
+     }
+   }
+   ```
+
+3. `pip install -r requirements.txt` if you haven't already run it
+   since `pyserial` was added.
+4. Fill in `_send_startup_commands()` and `_parse_tag_from_frame()` in
+   `hardware/serial_reader.py` per your reader's protocol datasheet.
+5. Run the app. A reader set to `"serial"` scans automatically in the
+   background - its GUI control (the Scan button or exit field) shows
+   a message instead of acting, since manual input only applies in
+   simulated mode.
+
+`hardware_config.json` is machine-specific (COM ports differ per PC),
+so like the other config files it's listed in `.gitignore` and never
+committed - only `hardware_config.example.json` is. A missing
+`hardware_config.json` is not an error - it just means both
+checkpoints stay simulated, same as before this layer existed.
+
+**Known open question, not yet decided:** a real UHF tag typically only
+carries a Tag ID (its EPC) - not a human-readable item type like
+"Bath Towel". `main.py`'s `_resolve_item_type()` is a placeholder that
+currently guesses randomly, same as the old fully-simulated behavior.
+Once real tags are in use, this needs a real answer - most likely
+either a dropdown for staff to pick the type at registration time, or
+a separate tag_id → item_type lookup maintained elsewhere.
 
 ## Current status
 
@@ -172,17 +311,32 @@ Everything described above is implemented and working:
 
 - **models.py** - defines `LinenItem` (with status)
 - **database.py** - reads/writes linen items via Supabase
-- **main.py** - scan / batch-assign / status / exit-scan GUI
+- **main.py** - scan / batch-assign / status / exit-scan GUI, wired to
+  the hardware layer below rather than generating scans itself
+- **hardware/** - RFID reader abstraction (see **Hardware setup**
+  above); both checkpoints run in simulated mode by default, with the
+  serial transport built out and ready for a real reader once one is
+  chosen - only its protocol parsing is still a placeholder
 - **detector.py** - flags exit scans based on registration + status
-- **alarm.py** - pop-up warning + Telegram notification
+- **alarm.py** - pop-up warning + WhatsApp notification, confirmed
+  delivering via Twilio's WhatsApp Sandbox (a fixed-content template,
+  not the actual alert details - see **WhatsApp alerts setup**)
 
 The mobile companion app (`linen-mobile-app-v2`) shares the same
 Supabase tables for live viewing (Home stats, rooms/categories, and
 theft alerts synced in real time via Supabase Realtime).
 
 Possible next steps:
+- Picking a real UHF reader model and filling in
+  `hardware/serial_reader.py`'s two placeholder methods (see
+  **Hardware setup**) - this is the one piece intentionally left
+  undone until a reader is chosen
+- Deciding how item type is determined from a real tag (dropdown at
+  registration vs. a tag_id → item_type lookup - see **Hardware
+  setup**'s open question)
 - Real push notifications on mobile (needs an EAS development build +
   Apple Developer account - see the mobile app's README)
-- A real WhatsApp notification channel (bigger project - needs the
-  WhatsApp Business API or a paid provider like Twilio)
+- Getting the actual alert details (item/room/customer) into the
+  WhatsApp message itself, instead of a fixed generic template - see
+  the content limitation in **WhatsApp alerts setup**
 - A history/log view of past (not just active) theft alerts

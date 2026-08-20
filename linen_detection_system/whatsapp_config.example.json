@@ -1,0 +1,6 @@
+{
+  "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "auth_token": "your_twilio_auth_token",
+  "from_number": "whatsapp:+14155238886",
+  "to_number": "whatsapp:+10000000000"
+}

@@ -3,11 +3,13 @@ import { useMemo } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { getItemsForRoom } from '@/data/linen-data';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useHasLoadedOnce } from '@/hooks/use-has-loaded-once';
 import { useLinenItems } from '@/hooks/use-linen-items';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
@@ -20,10 +22,14 @@ export default function RoomDetailScreen() {
   const { items: allItems, loading, error, refresh } = useLinenItems();
   const items = useMemo(() => getItemsForRoom(allItems, roomNumber), [allItems, roomNumber]);
   const customerName = items[0]?.customerName ?? 'Unknown';
+  // Full-list skeleton only on the very first load - avoids a flash of
+  // "No linen in this room" before the initial fetch has even resolved.
+  const hasLoadedOnce = useHasLoadedOnce(loading);
+  const showSkeleton = !hasLoadedOnce;
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
-      <Stack.Screen options={{ title: `Room ${roomNumber}` }} />
+      <Stack.Screen options={{ title: `🚪 Room ${roomNumber}` }} />
 
       <View style={styles.header}>
         <View style={[styles.customerIconWrap, { backgroundColor: `${colors.tint}22` }]}>
@@ -33,40 +39,46 @@ export default function RoomDetailScreen() {
           <ThemedText type="subtitle">{customerName}</ThemedText>
           <ThemedText style={{ color: colors.textSecondary }}>Room {roomNumber}</ThemedText>
         </View>
-        {loading && <ActivityIndicator color={colors.tint} style={{ marginLeft: 'auto' }} />}
+        {loading && !showSkeleton && <ActivityIndicator color={colors.tint} style={{ marginLeft: 'auto' }} />}
       </View>
 
       {error && (
         <ThemedText style={[styles.errorText, { color: colors.danger }]}>{error}</ThemedText>
       )}
 
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.tagId}
-        contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
-        renderItem={({ item }) => (
-          <View style={[styles.itemCard, { backgroundColor: colors.cardBackground, borderColor: border }]}>
-            <View style={styles.itemTextWrap}>
-              <ThemedText type="defaultSemiBold">{item.itemType}</ThemedText>
-              <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
-                Tag {item.tagId}
-              </ThemedText>
+      {showSkeleton ? (
+        <View style={styles.listContent}>
+          <SkeletonRowList />
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.tagId}
+          contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
+          renderItem={({ item }) => (
+            <View style={[styles.itemCard, { backgroundColor: colors.cardBackground, borderColor: border }]}>
+              <View style={styles.itemTextWrap}>
+                <ThemedText type="defaultSemiBold">{item.itemType}</ThemedText>
+                <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  Tag {item.tagId}
+                </ThemedText>
+              </View>
+              <View style={[styles.statusPill, { backgroundColor: `${colors.statusInUse}22` }]}>
+                <ThemedText style={[styles.statusPillText, { color: colors.statusInUse }]}>
+                  {item.status}
+                </ThemedText>
+              </View>
             </View>
-            <View style={[styles.statusPill, { backgroundColor: `${colors.statusInUse}22` }]}>
-              <ThemedText style={[styles.statusPillText, { color: colors.statusInUse }]}>
-                {item.status}
-              </ThemedText>
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          <ThemedText style={{ color: colors.textSecondary }}>
-            No linen currently in use in this room.
-          </ThemedText>
-        }
-      />
+          )}
+          ListEmptyComponent={
+            <ThemedText style={{ color: colors.textSecondary }}>
+              No linen currently in use in this room.
+            </ThemedText>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
