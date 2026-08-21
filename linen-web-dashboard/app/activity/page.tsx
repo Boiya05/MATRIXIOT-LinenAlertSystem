@@ -100,7 +100,14 @@ export default function ActivityPage() {
           </div>
         </div>
 
-        {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {error && (
+          <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error} If this is the first time you&apos;re seeing this, the{' '}
+            <code className="rounded bg-red-100 px-1 py-0.5 font-mono text-xs">linen_item_events</code>{' '}
+            table may not exist in Supabase yet — see the mobile app&apos;s README, &quot;Audit
+            trail (who did what, and when)&quot;.
+          </p>
+        )}
 
         {loading ? (
           <div className="space-y-2.5">
@@ -108,7 +115,7 @@ export default function ActivityPage() {
               <div key={i} className="h-[64px] animate-shimmer rounded-xl" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : error ? null : filtered.length === 0 ? (
           <div className="animate-fade-in-up rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
             <p className="text-sm text-slate-500">
               {events.length === 0 ? 'No activity recorded yet.' : 'Nothing matches that search.'}
