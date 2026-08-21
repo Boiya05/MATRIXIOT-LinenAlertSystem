@@ -63,20 +63,20 @@ export default function LoginPage() {
               <circle cx="9.5" cy="9.5" r="1.1" fill="#fff" />
             </svg>
           </div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-700">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-700 dark:text-teal-400">
             Linen RFID Detection System
           </p>
-          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
             Management Dashboard
           </h1>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-2xl border border-slate-200/80 bg-white/90 p-7 shadow-2xl shadow-slate-300/40 backdrop-blur-sm"
+          className="space-y-4 rounded-2xl border border-slate-200/80 bg-white/90 p-7 shadow-2xl shadow-slate-300/40 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-black/40"
         >
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
               Email
             </label>
             <input
@@ -86,12 +86,12 @@ export default function LoginPage() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-teal-500/20"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
               Password
             </label>
             <input
@@ -101,12 +101,12 @@ export default function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-teal-500/20"
             />
           </div>
 
           {error && (
-            <p className="animate-fade-in-up rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="animate-fade-in-up rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
               {error}
             </p>
           )}
@@ -120,7 +120,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-slate-400">
+        <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
           Accounts are created in the Supabase dashboard, not here — ask whoever manages this
           project for access.
         </p>

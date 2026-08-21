@@ -12,8 +12,12 @@ export default function DashboardPage() {
       <Nav />
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-9">
         <div className="mb-7 animate-fade-in-up">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">Overview</h1>
-          <p className="mt-0.5 text-sm text-slate-400">Live inventory status and theft alerts.</p>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+            Overview
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">
+            Live inventory status and theft alerts.
+          </p>
         </div>
         <StatsRow />
         <ActiveAlerts />
@@ -27,7 +31,7 @@ const STAT_CARDS = [
     key: 'total' as const,
     label: 'Total items',
     dot: 'bg-slate-400',
-    chip: 'bg-slate-100 text-slate-500',
+    chip: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
     bar: 'from-slate-300 to-slate-400',
     icon: (
       <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -37,7 +41,7 @@ const STAT_CARDS = [
     key: 'inUse' as const,
     label: 'In use',
     dot: 'bg-teal-500',
-    chip: 'bg-teal-50 text-teal-600',
+    chip: 'bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400',
     bar: 'from-teal-400 to-teal-600',
     icon: (
       <>
@@ -50,7 +54,7 @@ const STAT_CARDS = [
     key: 'laundry' as const,
     label: 'Laundry',
     dot: 'bg-amber-500',
-    chip: 'bg-amber-50 text-amber-600',
+    chip: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
     bar: 'from-amber-400 to-amber-500',
     icon: (
       <path
@@ -65,7 +69,7 @@ const STAT_CARDS = [
     key: 'storage' as const,
     label: 'Storage',
     dot: 'bg-slate-300',
-    chip: 'bg-slate-100 text-slate-500',
+    chip: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
     bar: 'from-slate-300 to-slate-400',
     icon: (
       <>
@@ -87,7 +91,7 @@ function StatsRow() {
         <div
           key={card.key}
           style={{ animationDelay: `${i * 60}ms` }}
-          className="group relative animate-fade-in-up overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/50 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-300/40"
+          className="group relative animate-fade-in-up overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/50 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-300/40 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 dark:hover:shadow-black/40"
         >
           <span
             aria-hidden
@@ -97,11 +101,11 @@ function StatsRow() {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className={`h-1.5 w-1.5 rounded-full ${card.dot}`} />
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   {card.label}
                 </p>
               </div>
-              <p className="mt-2 text-[28px] font-semibold leading-none tabular-nums text-slate-900">
+              <p className="mt-2 text-[28px] font-semibold leading-none tabular-nums text-slate-900 dark:text-slate-100">
                 {loading ? (
                   <span className="inline-block h-7 w-10 animate-shimmer rounded-md align-middle" />
                 ) : (
@@ -127,9 +131,11 @@ function ActiveAlerts() {
   return (
     <section className="animate-fade-in-up" style={{ animationDelay: '120ms' }}>
       <div className="mb-3.5 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-slate-900">Active theft alerts</h2>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+          Active theft alerts
+        </h2>
         {alerts.length > 0 && (
-          <span className="flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 shadow-sm shadow-red-900/5">
+          <span className="flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 shadow-sm shadow-red-900/5 dark:bg-red-500/10 dark:text-red-400 dark:shadow-none">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
@@ -140,7 +146,9 @@ function ActiveAlerts() {
       </div>
 
       {error && (
-        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          {error}
+        </p>
       )}
 
       {loading ? (
@@ -150,13 +158,20 @@ function ActiveAlerts() {
           ))}
         </div>
       ) : alerts.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50">
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center dark:border-slate-800 dark:bg-slate-900/40">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-500/10">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M5 13l4 4L19 7" stroke="#0f766e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M5 13l4 4L19 7"
+                stroke="currentColor"
+                className="text-teal-700 dark:text-teal-400"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </div>
-          <p className="text-sm text-slate-500">No active alerts. All clear.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">No active alerts. All clear. ✅</p>
         </div>
       ) : (
         <ul className="space-y-2.5">
@@ -164,19 +179,21 @@ function ActiveAlerts() {
             <li
               key={alert.id}
               style={{ animationDelay: `${i * 45}ms` }}
-              className="group flex animate-fade-in-up items-start justify-between gap-4 rounded-xl border border-red-200/70 bg-red-50/60 px-5 py-4 shadow-sm shadow-red-900/5 transition-all hover:border-red-300 hover:shadow-md hover:shadow-red-900/10"
+              className="group flex animate-fade-in-up items-start justify-between gap-4 rounded-xl border border-red-200/70 bg-red-50/60 px-5 py-4 shadow-sm shadow-red-900/5 transition-all hover:border-red-300 hover:shadow-md hover:shadow-red-900/10 dark:border-red-500/20 dark:bg-red-500/[0.07] dark:shadow-none dark:hover:border-red-500/40"
             >
               <div>
-                <p className="font-semibold text-red-900">{alert.message}</p>
-                <p className="mt-1 text-sm text-red-700/90">
+                <p className="font-semibold text-red-900 dark:text-red-300">
+                  🚨 {alert.message}
+                </p>
+                <p className="mt-1 text-sm text-red-700/90 dark:text-red-400/90">
                   Tag <span className="font-mono">{alert.tagId}</span> · {alert.itemType} · Room{' '}
                   {alert.roomNumber} · {alert.customerName}
                 </p>
-                <p className="mt-1 text-xs text-red-500/80">{alert.timestamp}</p>
+                <p className="mt-1 text-xs text-red-500/80 dark:text-red-400/70">{alert.timestamp}</p>
               </div>
               <button
                 onClick={() => dismiss(alert.id)}
-                className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition-all hover:bg-red-100 active:scale-[0.97]"
+                className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition-all hover:bg-red-100 active:scale-[0.97] dark:border-red-500/30 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-500/10"
               >
                 Dismiss
               </button>

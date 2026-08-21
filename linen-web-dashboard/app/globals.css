@@ -1,18 +1,25 @@
 @import "tailwindcss";
 
 /*
- * This dashboard is intentionally light-only for now (no dark theme
- * has been designed for it, unlike the mobile app). Without this,
- * browsers on a dark-mode OS apply their own dark styling to native
- * form controls - which is exactly what caused white-on-white input
- * text: the input's text color followed the OS's dark preference
- * while its background stayed explicitly white. Forcing color-scheme
- * here (rather than leaving it to remain unset) stops that.
+ * Class-based dark mode: Tailwind v4 defaults `dark:` to the
+ * prefers-color-scheme media query, which would follow the OS with no
+ * way for someone to override it in-app. This makes `dark:` respond
+ * to a `.dark` class on <html> instead, toggled by ThemeToggle
+ * (components/nav.tsx) and set before paint by the inline script in
+ * layout.tsx (see there for why that has to run before hydration).
  */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light;
   --background: #f8fafc;
   --foreground: #0f172a;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0a0f1a;
+  --foreground: #e2e8f0;
 }
 
 @theme inline {
@@ -33,17 +40,32 @@ body {
    * gives the app a sense of depth without being a "themed" or loud
    * background. Fixed (not scroll) so it reads as one continuous
    * backdrop behind every page, not something that moves with content.
+   * Slightly stronger/warmer in dark mode, where a flat near-black
+   * would otherwise read as lifeless.
    */
   background:
     radial-gradient(1100px 560px at 8% -10%, rgba(13, 148, 136, 0.07), transparent 60%),
     radial-gradient(900px 520px at 100% 0%, rgba(56, 189, 248, 0.05), transparent 55%),
     var(--background);
   background-attachment: fixed;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body {
+  background:
+    radial-gradient(1100px 560px at 8% -10%, rgba(20, 184, 166, 0.1), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, rgba(56, 189, 248, 0.07), transparent 55%),
+    var(--background);
 }
 
 ::selection {
   background: #99e6e6;
   color: #06474d;
+}
+
+.dark ::selection {
+  background: #0f766e;
+  color: #ecfeff;
 }
 
 /* Slim, unobtrusive scrollbar that matches the slate palette instead
@@ -68,6 +90,16 @@ body {
 }
 *::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
+}
+
+.dark * {
+  scrollbar-color: #334155 transparent;
+}
+.dark *::-webkit-scrollbar-thumb {
+  background-color: #334155;
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: #475569;
 }
 
 /* A consistent focus-visible ring for anything not already styled
@@ -104,4 +136,8 @@ body {
   background: linear-gradient(90deg, #f1f5f9 0%, #f8fafc 50%, #f1f5f9 100%);
   background-size: 800px 100%;
   animation: shimmer 1.6s ease-in-out infinite;
+}
+.dark .animate-shimmer {
+  background: linear-gradient(90deg, #1e293b 0%, #263449 50%, #1e293b 100%);
+  background-size: 800px 100%;
 }
