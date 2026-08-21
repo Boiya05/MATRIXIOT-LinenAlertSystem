@@ -8,7 +8,28 @@
  * update both copies.
  */
 
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import { supabase } from '@/lib/supabase';
+
+/**
+ * Turns a failed write into a message worth showing someone.
+ *
+ * Postgres code 42501 is what a Row Level Security policy rejection
+ * looks like ("new row violates row-level security policy for table
+ * ...") - since the "Staff can ..." policies (see the mobile app's
+ * README, "Role-based permissions") only became a thing once real
+ * viewer accounts existed, this is the first place that raw Postgres
+ * text would otherwise have reached the screen verbatim. Every other
+ * failure still surfaces the actual error, wrapped with what action
+ * failed.
+ */
+function friendlyWriteError(action: string, error: PostgrestError): Error {
+  if (error.code === '42501') {
+    return new Error("You don't have permission to do this - ask an admin for staff access.");
+  }
+  return new Error(`Failed to ${action}: ${error.message}`);
+}
 
 export type LinenStatus = 'In Use' | 'Laundry' | 'Storage';
 
@@ -177,7 +198,7 @@ export async function saveLinenItem(item: LinenItem): Promise<void> {
   );
 
   if (error) {
-    throw new Error(`Failed to save item: ${error.message}`);
+    throw friendlyWriteError('save item', error);
   }
 }
 
@@ -200,7 +221,7 @@ export async function logTheftAlert(
   });
 
   if (error) {
-    throw new Error(`Failed to log theft alert: ${error.message}`);
+    throw friendlyWriteError('log theft alert', error);
   }
 }
 
@@ -239,7 +260,7 @@ export async function dismissAlert(alertId: number): Promise<void> {
   const { error } = await supabase.from('theft_alerts').update({ dismissed: true }).eq('id', alertId);
 
   if (error) {
-    throw new Error(`Failed to dismiss alert: ${error.message}`);
+    throw friendlyWriteError('dismiss alert', error);
   }
 }
 
@@ -284,7 +305,7 @@ export async function logItemEvent(params: {
   });
 
   if (error) {
-    throw new Error(`Failed to log item event: ${error.message}`);
+    throw friendlyWriteError('log item event', error);
   }
 }
 

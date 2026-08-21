@@ -2,6 +2,7 @@
 
 import { Nav } from '@/components/nav';
 import { Protected } from '@/components/protected';
+import { useAuth } from '@/contexts/auth-context';
 import { getStats } from '@/data/linen-data';
 import { useLinenItems } from '@/hooks/use-linen-items';
 import { useTheftAlerts } from '@/hooks/use-theft-alerts';
@@ -126,6 +127,7 @@ function StatsRow() {
 }
 
 function ActiveAlerts() {
+  const { isStaff } = useAuth();
   const { alerts, loading, error, dismiss } = useTheftAlerts();
 
   return (
@@ -193,7 +195,9 @@ function ActiveAlerts() {
               </div>
               <button
                 onClick={() => dismiss(alert.id)}
-                className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition-all hover:bg-red-100 active:scale-[0.97] dark:border-red-500/30 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-500/10"
+                disabled={!isStaff}
+                title={!isStaff ? 'Staff access required' : undefined}
+                className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition-all hover:bg-red-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/30 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-500/10"
               >
                 Dismiss
               </button>

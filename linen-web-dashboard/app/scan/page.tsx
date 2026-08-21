@@ -4,9 +4,27 @@ import { useCallback, useRef, useState } from 'react';
 
 import { Nav } from '@/components/nav';
 import { Protected } from '@/components/protected';
+import { useAuth } from '@/contexts/auth-context';
 import { getAllItems, getItemByTag, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { checkTag } from '@/lib/detector';
+
+/**
+ * Shown at the top of a Scan section for a signed-in `viewer` account
+ * - every account can watch this page live, but registering items,
+ * running the exit scanner, and dismissing alerts are staff-only (see
+ * the mobile app's README, "Role-based permissions"). This is the
+ * proactive version of that gate; data/linen-data.ts's
+ * friendlyWriteError is the fallback for anywhere a click still gets
+ * through to Supabase's Row Level Security.
+ */
+function ViewerNotice() {
+  return (
+    <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
+      👀 You&apos;re signed in as a viewer. Ask an admin for staff access to use this.
+    </p>
+  );
+}
 
 // The kinds of linen items this app tracks - mirrors the desktop
 // app's main.py ITEM_TYPES exactly. A real UHF tag only carries a Tag
@@ -99,6 +117,7 @@ function ReaderModeSwitch({
 }
 
 function RegisterSection() {
+  const { isStaff, roleLoading } = useAuth();
   const [pending, setPending] = useState<{ tagId: string; itemType: string }[]>([]);
   const [selectedItemType, setSelectedItemType] = useState(ITEM_TYPES[0]);
   const [customerName, setCustomerName] = useState('');
@@ -206,6 +225,7 @@ function RegisterSection() {
           {reader.error}
         </p>
       )}
+      {!roleLoading && !isStaff && <ViewerNotice />}
 
       <div className="mb-3">
         <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -227,8 +247,9 @@ function RegisterSection() {
       {reader.mode === 'simulated' && (
         <button
           onClick={handleScanClick}
-          disabled={scanning}
-          className="mb-4 w-full rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 text-sm font-medium text-teal-700 transition-all hover:border-teal-400 hover:bg-teal-50 active:scale-[0.99] disabled:opacity-60 dark:border-teal-500/30 dark:bg-teal-500/5 dark:text-teal-400 dark:hover:border-teal-500/50 dark:hover:bg-teal-500/10"
+          disabled={scanning || !isStaff}
+          title={!isStaff ? 'Staff access required' : undefined}
+          className="mb-4 w-full rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 text-sm font-medium text-teal-700 transition-all hover:border-teal-400 hover:bg-teal-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:border-teal-500/30 dark:bg-teal-500/5 dark:text-teal-400 dark:hover:border-teal-500/50 dark:hover:bg-teal-500/10"
         >
           {scanning ? 'Scanning…' : '+ Scan (simulated)'}
         </button>
@@ -289,7 +310,8 @@ function RegisterSection() {
 
       <button
         onClick={handleAssign}
-        disabled={saving}
+        disabled={saving || !isStaff}
+        title={!isStaff ? 'Staff access required' : undefined}
         className="w-full rounded-lg bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-600/30 transition-all hover:shadow-lg hover:shadow-teal-600/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
       >
         {saving ? 'Saving…' : 'Assign'}
@@ -313,6 +335,7 @@ type ScanResult = { tagId: string; flagged: boolean; item: LinenItem | null };
 const RESCAN_COOLDOWN_MS = 5000;
 
 function ExitScannerSection() {
+  const { isStaff, roleLoading } = useAuth();
   const [manualTagId, setManualTagId] = useState('');
   const [processing, setProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<ScanResult | null>(null);
@@ -395,6 +418,7 @@ function ExitScannerSection() {
           {statusError}
         </p>
       )}
+      {!roleLoading && !isStaff && <ViewerNotice />}
 
       {reader.mode === 'simulated' && (
         <div className="mb-5 flex gap-2">
@@ -407,7 +431,8 @@ function ExitScannerSection() {
           />
           <button
             onClick={handleManualSubmit}
-            disabled={processing}
+            disabled={processing || !isStaff}
+            title={!isStaff ? 'Staff access required' : undefined}
             className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-900 active:scale-[0.97] disabled:opacity-60 dark:bg-slate-700 dark:hover:bg-slate-600"
           >
             Scan

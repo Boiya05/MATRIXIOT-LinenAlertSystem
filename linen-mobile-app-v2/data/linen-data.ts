@@ -8,7 +8,26 @@
  * screen needed to change for this swap, only the functions below.
  */
 
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import { supabase } from '@/lib/supabase';
+
+/**
+ * Turns a failed write into a message worth showing someone. Postgres
+ * code 42501 is what a Row Level Security policy rejection looks like
+ * ("new row violates row-level security policy for table ...") - the
+ * "Staff can ..." policies (see the README, "Role-based permissions")
+ * mean a signed-in `viewer` account hits this on every write; without
+ * this, that raw Postgres text would reach the screen verbatim. Every
+ * other failure still surfaces the actual error, wrapped with what
+ * action failed. Mirrors the web dashboard's copy of this same helper.
+ */
+function friendlyWriteError(action: string, error: PostgrestError): Error {
+  if (error.code === '42501') {
+    return new Error("You don't have permission to do this - ask an admin for staff access.");
+  }
+  return new Error(`Failed to ${action}: ${error.message}`);
+}
 
 export type LinenStatus = 'In Use' | 'Laundry' | 'Storage';
 
@@ -150,7 +169,7 @@ export async function saveLinenItem(item: LinenItem): Promise<void> {
   );
 
   if (error) {
-    throw new Error(`Failed to save item: ${error.message}`);
+    throw friendlyWriteError('save item', error);
   }
 }
 
@@ -173,7 +192,7 @@ export async function logTheftAlert(
   });
 
   if (error) {
-    throw new Error(`Failed to log theft alert: ${error.message}`);
+    throw friendlyWriteError('log theft alert', error);
   }
 }
 
@@ -212,7 +231,7 @@ export async function dismissAlert(alertId: number): Promise<void> {
   const { error } = await supabase.from('theft_alerts').update({ dismissed: true }).eq('id', alertId);
 
   if (error) {
-    throw new Error(`Failed to dismiss alert: ${error.message}`);
+    throw friendlyWriteError('dismiss alert', error);
   }
 }
 
@@ -257,7 +276,7 @@ export async function logItemEvent(params: {
   });
 
   if (error) {
-    throw new Error(`Failed to log item event: ${error.message}`);
+    throw friendlyWriteError('log item event', error);
   }
 }
 

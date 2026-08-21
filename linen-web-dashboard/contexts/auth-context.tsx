@@ -8,6 +8,15 @@
  * are created directly in the Supabase dashboard (Authentication ->
  * Users), since a management dashboard shouldn't let just anyone
  * register themselves an account.
+ *
+ * Also tracks `role`/`isStaff` - every account can view everything,
+ * but only a `staff` account can register items, run the exit
+ * scanner, or dismiss alerts (see the mobile app's README, "Role-
+ * based permissions"). Pages use `isStaff` to show a plain-language
+ * notice and disable those controls up front, instead of a viewer
+ * only finding out via a raw Row Level Security error after clicking
+ * something (data/linen-data.ts's friendlyWriteError is the fallback
+ * for anywhere that isn't checked yet).
  */
 
 'use client';
@@ -15,12 +24,16 @@
 import type { Session, User } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { getUserRole, type UserRole } from '@/data/user-role';
 import { supabase } from '@/lib/supabase';
 
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  role: UserRole | null;
+  roleLoading: boolean;
+  isStaff: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -32,6 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Starts true so protected pages can show a loading state instead of
   // flashing the login redirect before an existing session is checked.
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [roleLoading, setRoleLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -48,11 +63,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Re-fetches whenever the signed-in user changes (login, logout, or
+  // switching accounts) - not on every session refresh, since the
+  // role itself doesn't change just because the JWT did.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      setRole(null);
+      setRoleLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRoleLoading(true);
+    getUserRole(userId)
+      .then((fetchedRole) => {
+        if (!cancelled) setRole(fetchedRole);
+      })
+      .catch((err) => {
+        console.warn('Failed to load user role:', err);
+        if (!cancelled) setRole('viewer');
+      })
+      .finally(() => {
+        if (!cancelled) setRoleLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
       user: session?.user ?? null,
       loading,
+      role,
+      roleLoading,
+      isStaff: role === 'staff',
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -62,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
       },
     }),
-    [session, loading]
+    [session, loading, role, roleLoading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
