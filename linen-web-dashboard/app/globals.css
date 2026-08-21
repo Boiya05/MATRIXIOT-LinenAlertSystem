@@ -22,12 +22,86 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  background: var(--background);
   color: var(--foreground);
+  /*
+   * A very soft, fixed pair of color washes instead of a flat fill -
+   * gives the app a sense of depth without being a "themed" or loud
+   * background. Fixed (not scroll) so it reads as one continuous
+   * backdrop behind every page, not something that moves with content.
+   */
+  background:
+    radial-gradient(1100px 560px at 8% -10%, rgba(13, 148, 136, 0.07), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, rgba(56, 189, 248, 0.05), transparent 55%),
+    var(--background);
+  background-attachment: fixed;
 }
 
 ::selection {
   background: #99e6e6;
   color: #06474d;
+}
+
+/* Slim, unobtrusive scrollbar that matches the slate palette instead
+   of the OS default - most visible in the Inventory/Activity tables'
+   horizontal scroll and long lists. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+/* A consistent focus-visible ring for anything not already styled
+   with its own focus:ring utility (native form controls etc.) -
+   keyboard-nav friendly without drawing the default blue outline. */
+:focus-visible {
+  outline: 2px solid rgba(13, 148, 136, 0.5);
+  outline-offset: 2px;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+.animate-shimmer {
+  background: linear-gradient(90deg, #f1f5f9 0%, #f8fafc 50%, #f1f5f9 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
 }

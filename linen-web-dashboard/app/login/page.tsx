@@ -37,17 +37,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4">
-      {/* Soft radial glow behind the card - subtle, not a full hero */}
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
+      {/* Two soft radial glows behind the card, offset from each other -
+          subtle, not a full hero, but more dimensional than a single flat blob. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.07] blur-3xl"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-[58%] -translate-y-[55%] rounded-full opacity-[0.09] blur-3xl"
         style={{ background: 'radial-gradient(circle, #0d9488, transparent 70%)' }}
       />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[420px] w-[420px] -translate-x-[35%] -translate-y-[42%] rounded-full opacity-[0.08] blur-3xl"
+        style={{ background: 'radial-gradient(circle, #38bdf8, transparent 70%)' }}
+      />
 
-      <div className="relative w-full max-w-sm">
+      <div className="relative w-full max-w-sm animate-fade-in-up">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-teal-600 shadow-sm shadow-teal-600/30">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-teal-700 shadow-lg shadow-teal-600/25">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
                 d="M7 6h6l4 4v9a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 6 19V7.5A1.5 1.5 0 0 1 7 6Z"
@@ -67,7 +73,7 @@ export default function LoginPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-2xl border border-slate-200 bg-white p-7 shadow-xl shadow-slate-200/60"
+          className="space-y-4 rounded-2xl border border-slate-200/80 bg-white/90 p-7 shadow-2xl shadow-slate-300/40 backdrop-blur-sm"
         >
           <div>
             <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -80,7 +86,7 @@ export default function LoginPage() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-shadow focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
             />
           </div>
 
@@ -95,18 +101,20 @@ export default function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-shadow focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
             />
           </div>
 
           {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+            <p className="animate-fade-in-up rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
           )}
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg bg-teal-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm shadow-teal-600/30 transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-600/30 transition-all hover:shadow-lg hover:shadow-teal-600/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>

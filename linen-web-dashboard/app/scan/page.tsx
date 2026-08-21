@@ -30,15 +30,19 @@ export default function ScanPage() {
     <Protected>
       <Nav />
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-9">
-        <div className="mb-7">
+        <div className="mb-7 animate-fade-in-up">
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">Scan</h1>
           <p className="mt-0.5 text-sm text-slate-400">
             Register new items and run the exit-scanner theft check, right from this browser.
           </p>
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
-          <RegisterSection />
-          <ExitScannerSection />
+          <div className="animate-fade-in-up">
+            <RegisterSection />
+          </div>
+          <div className="animate-fade-in-up" style={{ animationDelay: '80ms' }}>
+            <ExitScannerSection />
+          </div>
         </div>
       </main>
     </Protected>
@@ -68,7 +72,7 @@ function ReaderModeSwitch({
         </span>
         <button
           onClick={onDisconnectSerial}
-          className="text-xs font-medium text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
+          className="text-xs font-medium text-slate-400 underline-offset-2 transition-colors hover:text-slate-600 hover:underline"
         >
           Disconnect
         </button>
@@ -176,7 +180,7 @@ function RegisterSection() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/50">
+    <section className="h-full rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50 transition-shadow hover:shadow-md hover:shadow-slate-200/70">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-900">Register items</h2>
@@ -202,7 +206,7 @@ function RegisterSection() {
         <select
           value={selectedItemType}
           onChange={(e) => setSelectedItemType(e.target.value)}
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
         >
           {ITEM_TYPES.map((itemType) => (
             <option key={itemType} value={itemType}>
@@ -216,7 +220,7 @@ function RegisterSection() {
         <button
           onClick={handleScanClick}
           disabled={scanning}
-          className="mb-4 w-full rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 text-sm font-medium text-teal-700 transition-colors hover:bg-teal-50 disabled:opacity-60"
+          className="mb-4 w-full rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 text-sm font-medium text-teal-700 transition-all hover:border-teal-400 hover:bg-teal-50 active:scale-[0.99] disabled:opacity-60"
         >
           {scanning ? 'Scanning…' : '+ Scan (simulated)'}
         </button>
@@ -240,7 +244,7 @@ function RegisterSection() {
                 </span>
                 <button
                   onClick={() => removePending(item.tagId)}
-                  className="text-xs text-slate-400 hover:text-red-600"
+                  className="text-xs text-slate-400 transition-colors hover:text-red-600"
                 >
                   Remove
                 </button>
@@ -256,7 +260,7 @@ function RegisterSection() {
           <input
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
           />
         </div>
         <div>
@@ -264,7 +268,7 @@ function RegisterSection() {
           <input
             value={roomNumber}
             onChange={(e) => setRoomNumber(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
           />
         </div>
       </div>
@@ -272,7 +276,7 @@ function RegisterSection() {
       <button
         onClick={handleAssign}
         disabled={saving}
-        className="w-full rounded-lg bg-teal-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm shadow-teal-600/30 transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-lg bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-600/30 transition-all hover:shadow-lg hover:shadow-teal-600/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
       >
         {saving ? 'Saving…' : 'Assign'}
       </button>
@@ -348,7 +352,7 @@ function ExitScannerSection() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/50">
+    <section className="h-full rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50 transition-shadow hover:shadow-md hover:shadow-slate-200/70">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-900">Exit scanner</h2>
@@ -377,12 +381,12 @@ function ExitScannerSection() {
             onChange={(e) => setManualTagId(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
             placeholder="Tag ID"
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
           />
           <button
             onClick={handleManualSubmit}
             disabled={processing}
-            className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900 disabled:opacity-60"
+            className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-900 active:scale-[0.97] disabled:opacity-60"
           >
             Scan
           </button>
@@ -396,8 +400,11 @@ function ExitScannerSection() {
 
       {lastResult ? (
         <div
-          className={`rounded-xl border px-5 py-4 ${
-            lastResult.flagged ? 'border-red-200/70 bg-red-50/60' : 'border-teal-200/70 bg-teal-50/60'
+          key={`${lastResult.tagId}-${lastResult.flagged}`}
+          className={`animate-fade-in-up rounded-xl border px-5 py-4 shadow-sm ${
+            lastResult.flagged
+              ? 'border-red-200/70 bg-red-50/60 shadow-red-900/5'
+              : 'border-teal-200/70 bg-teal-50/60 shadow-teal-900/5'
           }`}
         >
           <p className={`font-semibold ${lastResult.flagged ? 'text-red-900' : 'text-teal-800'}`}>

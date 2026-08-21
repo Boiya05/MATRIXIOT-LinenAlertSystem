@@ -71,7 +71,7 @@ export default function ActivityPage() {
     <Protected>
       <Nav />
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-9">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div className="mb-6 flex animate-fade-in-up flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">Activity</h1>
             <p className="mt-0.5 text-sm text-slate-400">
@@ -79,12 +79,25 @@ export default function ActivityPage() {
               triggered or cleared an alert. Most recent 200 events.
             </p>
           </div>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search tag, guest, room, or who did it"
-            className="w-72 max-w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/25"
-          />
+          <div className="relative w-72 max-w-full">
+            <svg
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden
+            >
+              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+              <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search tag, guest, room, or who did it"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-8 pr-3 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15"
+            />
+          </div>
         </div>
 
         {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -92,19 +105,22 @@ export default function ActivityPage() {
         {loading ? (
           <div className="space-y-2.5">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-[64px] animate-pulse rounded-xl bg-slate-100" />
+              <div key={i} className="h-[64px] animate-shimmer rounded-xl" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-14 text-center">
+          <div className="animate-fade-in-up rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
             <p className="text-sm text-slate-500">
               {events.length === 0 ? 'No activity recorded yet.' : 'Nothing matches that search.'}
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50">
+          <ul
+            className="animate-fade-in-up divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50"
+            style={{ animationDelay: '80ms' }}
+          >
             {filtered.map((event) => (
-              <li key={event.id} className="flex items-start justify-between gap-4 px-5 py-4 transition-colors hover:bg-slate-50/60">
+              <li key={event.id} className="flex items-start justify-between gap-4 px-5 py-4 transition-colors hover:bg-slate-50/70">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${EVENT_STYLES[event.eventType]}`}>

@@ -29,8 +29,11 @@ export function Protected({ children }: { children: ReactNode }) {
 
   if (loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="text-sm text-slate-400">Loading…</p>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <span className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-teal-600" />
+          <p className="text-sm text-slate-400">Loading…</p>
+        </div>
       </div>
     );
   }
