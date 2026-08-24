@@ -81,18 +81,18 @@ app's README ("Audit trail (who did what, and when)") for the full
 setup and what gets logged where.
 
 **Registering items (scan + batch assign):**
-- Click **Scan (Simulated)** to simulate an RFID reader picking up a tag.
-  Each click adds a random Tag ID + Item Type to the **Pending Items**
-  table (as if the tag itself already encodes both).
-- Or use the **Scan / type Tag ID** field for an actual USB RFID
-  reader - the "keyboard wedge" kind that just types the tag ID and
-  presses Enter, no COM port or configuration needed (this is the
-  first reader type this app supports for real - see **Hardware
-  setup** below). Click into the field once so it has focus, then
-  scan away; it clears and refocuses itself after each tag, and a
-  tag still sitting in range - which a real reader reads many times a
-  second, not once - only gets added to the pending list the first
-  time, not once per read.
+- Pick an **Item Type** first - a real UHF tag only carries an ID, not
+  what the item actually is, so this is what tells the app that.
+- Use the **Scan / type Tag ID** field for an actual USB RFID reader -
+  the "keyboard wedge" kind that just types the tag ID and presses
+  Enter, no COM port or configuration needed (this is the first reader
+  type this app supports for real - see **Hardware setup** below).
+  Click into the field once so it has focus, then scan away; it clears
+  and refocuses itself after each tag, and a tag still sitting in
+  range - which a real reader reads many times a second, not once -
+  only gets added to the pending list the first time, not once per
+  read. No reader on hand? Type a Tag ID by hand and press Enter -
+  same field, same result.
 - Scan as many items as you like - they all wait in the pending list.
 - Type a **Customer Name** and **Room Number**, then click **Assign** to
   apply those details to *every* pending item at once and save them all
@@ -271,9 +271,11 @@ that instead talks over a real serial port, which needs the setup
   implements: `connect()`, `disconnect()`, `start()`, `stop()`, and
   `poll()`. `main.py` only ever talks to this interface - it doesn't
   know or care whether a given reader is simulated or real.
-- `hardware/simulated_reader.py` is what both checkpoints use today.
-  It's driven directly by the GUI (the "Scan (Simulated)" button and
-  the exit scanner's typed Tag ID field) rather than any hardware.
+- `hardware/simulated_reader.py` is what both checkpoints use by
+  default. It's driven directly by the GUI - the "Scan / type Tag ID"
+  and exit scanner fields - rather than any hardware, which is also
+  how a real keyboard-wedge reader reaches the app (see the note
+  above).
 - `hardware/serial_reader.py` is the real-hardware path: a generic
   serial (COM port) transport that opens the port and reads it on a
   background thread. **The actual protocol - how to interpret the raw

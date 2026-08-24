@@ -27,10 +27,11 @@ the one running the Python app.
 - **Scan** (`/scan`) — register new items (scan + assign a guest/room)
   and run the exit-scanner theft check, in two independent sections
   matching the desktop app's two checkpoints. Each defaults to
-  **Simulated** mode (a button/manual Tag ID field, works in any
-  browser, no hardware needed) and can switch to **Web Serial** mode
-  to talk to a real USB RFID reader directly - see **Real hardware
-  from the browser** below before relying on that mode.
+  **Simulated** mode - really a manual Tag ID field, works in any
+  browser, no hardware needed, and is also how a real USB "keyboard
+  wedge" RFID reader reaches this page (see **Real hardware from the
+  browser** below) - and can switch to **Web Serial** mode instead for
+  a reader that talks over a real serial connection.
 - **Inventory** (`/inventory`) — every linen item, with a status
   filter and a search box (tag, guest, room, item type).
 - **Alert history** (`/history`) — every already-dismissed alert,
@@ -140,6 +141,15 @@ this folder) - `npx vercel --prod` for a production deploy once you're
 ready.
 
 ## Real hardware from the browser
+
+**If your reader is a USB "keyboard wedge" scanner** (types the tag ID
+and presses Enter, shows up as a keyboard to the OS, no COM port) -
+none of this section applies. It already works today through the
+Simulated-mode Tag ID fields on the Scan page - the browser has no way
+to tell "a person typed this" from "a keyboard-emulating scanner typed
+this," so it just works, as long as the field has focus when a tag is
+scanned. Everything below is for a reader that instead talks over a
+real serial connection, via Web Serial.
 
 The Scan page's **Connect real reader** button uses the [Web Serial
 API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API)

@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Nav } from '@/components/nav';
 import { Protected } from '@/components/protected';
 import { useAuth } from '@/contexts/auth-context';
-import { getAllItems, getItemByTag, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
+import { getItemByTag, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { checkTag } from '@/lib/detector';
 
@@ -32,16 +32,6 @@ function ViewerNotice() {
 // this list at scan time (the dropdown in RegisterSection below)
 // rather than it being guessed or looked up automatically.
 const ITEM_TYPES = ['Bath Towel', 'Hand Towel', 'Washcloth', 'Bedsheet', 'Pillowcase', 'Blanket'];
-
-async function generateTagId(pendingTagIds: string[]): Promise<string> {
-  const allItems = await getAllItems();
-  const takenTagIds = new Set([...pendingTagIds, ...allItems.map((item) => item.tagId)]);
-  let tagId: string;
-  do {
-    tagId = `TAG${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
-  } while (takenTagIds.has(tagId));
-  return tagId;
-}
 
 export default function ScanPage() {
   return (
@@ -120,10 +110,10 @@ function RegisterSection() {
   const { isStaff, roleLoading } = useAuth();
   const [pending, setPending] = useState<{ tagId: string; itemType: string }[]>([]);
   const [selectedItemType, setSelectedItemType] = useState(ITEM_TYPES[0]);
+  const [manualTagId, setManualTagId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
   const [status, setStatus] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Depends on selectedItemType so a fresh closure (carrying the
@@ -143,16 +133,17 @@ function RegisterSection() {
 
   const reader = useReader('entry_reader', handleTag);
 
-  async function handleScanClick() {
-    setScanning(true);
-    try {
-      const tagId = await generateTagId(pending.map((p) => p.tagId));
-      reader.simulateScan(tagId);
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : 'Failed to generate a tag ID.');
-    } finally {
-      setScanning(false);
-    }
+  // A real USB RFID reader is a "keyboard wedge" - it types the tag
+  // ID as keystrokes into whatever's focused, then sends Enter, no
+  // different from someone typing it by hand. Feeds into the same
+  // queue useReader's poll loop drains either way, so handleTag above
+  // (with its duplicate-scan check) is still the one processing path.
+  function handleManualSubmit() {
+    if (!isStaff) return; // matches the button's disabled state - Enter shouldn't bypass it
+    const tagId = manualTagId.trim().toUpperCase();
+    if (!tagId) return;
+    reader.simulateScan(tagId);
+    setManualTagId('');
   }
 
   function removePending(tagId: string) {
@@ -245,14 +236,23 @@ function RegisterSection() {
       </div>
 
       {reader.mode === 'simulated' && (
-        <button
-          onClick={handleScanClick}
-          disabled={scanning || !isStaff}
-          title={!isStaff ? 'Staff access required' : undefined}
-          className="mb-4 w-full rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 text-sm font-medium text-teal-700 transition-all hover:border-teal-400 hover:bg-teal-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:border-teal-500/30 dark:bg-teal-500/5 dark:text-teal-400 dark:hover:border-teal-500/50 dark:hover:bg-teal-500/10"
-        >
-          {scanning ? 'Scanning…' : '+ Scan (simulated)'}
-        </button>
+        <div className="mb-4 flex gap-2">
+          <input
+            value={manualTagId}
+            onChange={(e) => setManualTagId(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
+            placeholder="Scan or type Tag ID"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-teal-500/20"
+          />
+          <button
+            onClick={handleManualSubmit}
+            disabled={!isStaff}
+            title={!isStaff ? 'Staff access required' : undefined}
+            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-teal-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Scan
+          </button>
+        </div>
       )}
       {reader.mode === 'web-serial' && (
         <p className="mb-4 rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 text-center text-sm text-teal-700 dark:border-teal-500/30 dark:bg-teal-500/5 dark:text-teal-400">
@@ -382,6 +382,7 @@ function ExitScannerSection() {
   const reader = useReader('exit_reader', handleTag);
 
   function handleManualSubmit() {
+    if (!isStaff) return; // matches the button's disabled state - Enter shouldn't bypass it
     const tagId = manualTagId.trim().toUpperCase();
     if (!tagId) return;
     reader.simulateScan(tagId);

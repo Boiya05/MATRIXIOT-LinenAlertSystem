@@ -85,20 +85,27 @@ dismiss it.
 **Scan** - two independent sections, matching the desktop app's two
 checkpoints, each independently switchable between **Simulated** and
 **USB reader** mode:
-- **Register items** - scan a tag (simulated button, or a real reader
-  once connected), then assign a Customer Name + Room Number to
-  everything scanned so far, same batch-assign flow as the desktop
-  app.
+- **Register items** - scan a tag (a Tag ID field, typed by hand or
+  from a real USB "keyboard wedge" scanner - see below), then assign a
+  Customer Name + Room Number to everything scanned so far, same
+  batch-assign flow as the desktop app.
 - **Exit scanner** - a Tag ID (typed, or from a real reader) runs
   through the same theft rule as `detector.py` (`lib/detector.ts`
   here); a flagged scan writes a `theft_alerts` row the same way the
   desktop app's `alarm.py` does.
 
-USB reader mode needs Android + a USB OTG cable, and needs a
-dev-client build instead of Expo Go - see `hardware/README.md` for the
-full constraints and what's still unverified (the actual reader
-protocol is a placeholder until a model is chosen, and on-device
-behavior hasn't been tested against real hardware).
+A USB "keyboard wedge" reader (types the tag ID and presses Enter, no
+special driver needed) already works today through Simulated mode's
+Tag ID fields, plugged in via a USB OTG cable - Android treats it as a
+plain keyboard, same as the desktop app and web dashboard's equivalent
+fields. **USB reader mode** (the mode-switch button) is a different,
+more involved integration - direct USB Host API access for a reader
+that talks a real serial protocol instead - and needs Android + a USB
+OTG cable plus a dev-client build instead of Expo Go; see
+`hardware/README.md` for the full constraints and what's still
+unverified (the actual reader protocol is a placeholder until a model
+is chosen, and on-device behavior hasn't been tested against real
+hardware).
 
 **List View** - a segmented view of all linen:
 - **In Use** - grouped by room, showing the customer and item count; tap a room to see who's in it and exactly which items

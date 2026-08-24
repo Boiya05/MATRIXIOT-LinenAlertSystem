@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
-import { getAllItems, getItemByTag, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
+import { getItemByTag, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { checkTag } from '@/lib/detector';
@@ -24,16 +24,6 @@ import { checkTag } from '@/lib/detector';
 // list at scan time (see the pill selector in RegisterSection below)
 // rather than it being guessed or looked up automatically.
 const ITEM_TYPES = ['Bath Towel', 'Hand Towel', 'Washcloth', 'Bedsheet', 'Pillowcase', 'Blanket'];
-
-async function generateTagId(pendingTagIds: string[]): Promise<string> {
-  const allItems = await getAllItems();
-  const takenTagIds = new Set([...pendingTagIds, ...allItems.map((item) => item.tagId)]);
-  let tagId: string;
-  do {
-    tagId = `TAG${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
-  } while (takenTagIds.has(tagId));
-  return tagId;
-}
 
 export default function ScanScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -164,10 +154,10 @@ function RegisterSection() {
 
   const [pending, setPending] = useState<{ tagId: string; itemType: string }[]>([]);
   const [selectedItemType, setSelectedItemType] = useState(ITEM_TYPES[0]);
+  const [manualTagId, setManualTagId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
   const [status, setStatus] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Depends on selectedItemType so a fresh closure (carrying the
@@ -187,16 +177,17 @@ function RegisterSection() {
 
   const reader = useReader('entry_reader', handleTag);
 
-  async function handleScan() {
-    setScanning(true);
-    try {
-      const tagId = await generateTagId(pending.map((p) => p.tagId));
-      reader.simulateScan(tagId);
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : 'Failed to generate a tag ID.');
-    } finally {
-      setScanning(false);
-    }
+  // A real USB RFID reader (via an OTG cable) is a "keyboard wedge" -
+  // Android sees it as a plain HID keyboard, so it types the tag ID
+  // as keystrokes into whatever's focused, then sends Enter/submit,
+  // no different from someone typing it by hand. Feeds into the same
+  // queue useReader's poll loop drains either way, so handleTag above
+  // (with its duplicate-scan check) is still the one processing path.
+  function handleManualSubmit() {
+    const tagId = manualTagId.trim().toUpperCase();
+    if (!tagId) return;
+    reader.simulateScan(tagId);
+    setManualTagId('');
   }
 
   function removePending(tagId: string) {
@@ -267,14 +258,27 @@ function RegisterSection() {
       </View>
 
       {reader.mode === 'simulated' ? (
-        <PressableScale
-          onPress={handleScan}
-          disabled={scanning}
-          style={[styles.scanButton, { borderColor: colors.tint, opacity: scanning ? 0.6 : 1 }]}>
-          <ThemedText style={{ color: colors.tint, fontWeight: '600' }}>
-            {scanning ? 'Scanning…' : '+ Scan (simulated)'}
-          </ThemedText>
-        </PressableScale>
+        <View style={styles.exitRow}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.exitInput,
+              { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+            ]}
+            placeholder="Scan or type Tag ID"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="characters"
+            value={manualTagId}
+            onChangeText={setManualTagId}
+            onSubmitEditing={handleManualSubmit}
+            returnKeyType="done"
+          />
+          <PressableScale
+            onPress={handleManualSubmit}
+            style={[styles.scanExitButton, { backgroundColor: colors.tint }]}>
+            <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Scan</ThemedText>
+          </PressableScale>
+        </View>
       ) : (
         <View style={[styles.scanButton, { borderColor: colors.tint }]}>
           <ThemedText style={{ color: colors.tint, fontWeight: '600' }}>

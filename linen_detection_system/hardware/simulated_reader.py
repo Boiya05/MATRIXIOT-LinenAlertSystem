@@ -1,16 +1,21 @@
 """
 hardware/simulated_reader.py
 
-A fake RFIDReader used until real hardware is connected (and worth
-keeping afterwards too, for testing without the physical reader on
-hand). Nothing here talks to any hardware: connect()/start()/stop()
-are no-ops, and a tag is only ever "read" when simulate_scan() is
-called directly - driven by the GUI's "Scan (Simulated)" button or the
-exit scanner's manual Tag ID field.
+Despite the name, this is also how a real USB "keyboard wedge" RFID
+reader reaches the app today - see main.py's "Scan / type Tag ID" and
+exit scanner fields. Nothing here talks to any hardware itself:
+connect()/start()/stop() are no-ops, and a tag is only ever "read"
+when simulate_scan() is called directly, by either of those text
+fields (typed by hand, or "typed" by a real reader emulating a
+keyboard). It's also just useful to keep around for testing without a
+reader on hand.
 
-This is also what main.py checks with isinstance() to decide whether
-those manual controls should do anything, or whether a real reader is
-active and driving that same role automatically instead.
+This is also what main.py's exit scanner checks with isinstance() to
+decide whether its manual field should do anything, or whether a real
+serial reader is active and driving that role automatically instead
+(the entry side's "Scan / type Tag ID" field always works, regardless
+of mode, since a keyboard-wedge reader isn't something
+hardware_config.json even has a way to describe).
 """
 
 from .base import RFIDReader

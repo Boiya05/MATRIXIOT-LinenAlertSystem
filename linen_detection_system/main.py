@@ -10,17 +10,16 @@ Two RFID checkpoints feed this app: an entry reader (registering new
 items into the pending list) and an exit reader (theft detection).
 Both are built on the same generic reader abstraction in hardware/ -
 by default (hardware_config.json missing or unconfigured) both are
-SimulatedReader instances, driven by the "Scan (Simulated)" button, the
-"Scan / type Tag ID" field, and the exit scanner's manual Tag ID field.
-A real USB "keyboard wedge" RFID reader - the kind that just types the
-tag ID and presses Enter, no COM port involved - works today through
-either of those text fields, no configuration needed; see their
-comments in _build_widgets(). hardware_config.json is only for a
-reader that talks over a real serial port instead - see
-hardware/serial_reader.py for what's still a placeholder there.
+SimulatedReader instances, driven by the "Scan / type Tag ID" field and
+the exit scanner's manual Tag ID field. A real USB "keyboard wedge"
+RFID reader - the kind that just types the tag ID and presses Enter,
+no COM port involved - works today through either of those text
+fields, no configuration needed; see their comments in
+_build_widgets(). hardware_config.json is only for a reader that talks
+over a real serial port instead - see hardware/serial_reader.py for
+what's still a placeholder there.
 """
 
-import random
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -34,7 +33,7 @@ from models import STATUS_IN_USE, STATUS_LAUNDRY, STATUS_STORAGE, LinenItem
 # The kinds of linen items this app tracks. A real UHF tag only
 # carries a Tag ID (its EPC), not a human-readable item type, so staff
 # pick the type from this list at scan time - see the Item Type
-# dropdown next to "Scan (Simulated)" and _handle_entry_scan() below.
+# dropdown and _handle_entry_scan() below.
 ITEM_TYPES = ["Bath Towel", "Hand Towel", "Washcloth", "Bedsheet", "Pillowcase", "Blanket"]
 
 
@@ -90,21 +89,17 @@ class LinenApp:
         self.operator_entry = ttk.Entry(operator_frame, width=25)
         self.operator_entry.pack(side="left", padx=(6, 0))
 
-        # --- Scan section: simulates an RFID reader detecting a tag ---
+        # --- Scan section: real RFID reader input ---
         scan_frame = ttk.Frame(self.root, padding=10)
         scan_frame.pack(fill="x")
 
-        scan_button = ttk.Button(scan_frame, text="Scan (Simulated)", command=self._on_scan_simulated)
-        scan_button.pack(side="left")
-
         # A real UHF tag only carries a Tag ID - it doesn't say what
         # the item actually is. Staff pick that here before scanning;
-        # whatever's selected applies to the next tag read, from
-        # either this button or a real reader (see
+        # whatever's selected applies to the next tag read (see
         # _handle_entry_scan()). Stays on the last-picked value after
         # each scan, so scanning several of the same item type in a
         # row doesn't need reselecting every time.
-        ttk.Label(scan_frame, text="Item Type:").pack(side="left", padx=(10, 4))
+        ttk.Label(scan_frame, text="Item Type:").pack(side="left")
         self.item_type_combo = ttk.Combobox(scan_frame, values=ITEM_TYPES, state="readonly", width=14)
         self.item_type_combo.current(0)
         self.item_type_combo.pack(side="left")
@@ -118,12 +113,12 @@ class LinenApp:
         # bytes), all this needs is a plain Entry field to be focused
         # when a tag is scanned - <Return> below is what actually reads
         # the scan, whether it was typed by a person or a real reader.
-        # Goes through entry_reader.simulate_scan() same as the button
-        # above, so _handle_entry_scan() is still the one code path
-        # either way - see its docstring for the duplicate-scan check
-        # this needed once a real reader was in the picture (a tag
-        # sitting in range gets read - and would get re-added - many
-        # times a second otherwise).
+        # Goes through entry_reader.simulate_scan(), so
+        # _handle_entry_scan() is the single processing path for every
+        # tag - see its docstring for the duplicate-scan check this
+        # needed once a real reader was in the picture (a tag sitting
+        # in range gets read - and would get re-added - many times a
+        # second otherwise).
         scan_frame2 = ttk.Frame(self.root, padding=(10, 0, 10, 10))
         scan_frame2.pack(fill="x")
         ttk.Label(scan_frame2, text="Scan / type Tag ID:").pack(side="left")
@@ -305,50 +300,17 @@ class LinenApp:
             self._handle_exit_scan(tag_id)
         self.root.after(150, self._poll_readers)
 
-    def _generate_tag_id(self):
-        """
-        Make up a Tag ID the way a simulated RFID scan would produce
-        one: "TAG" followed by 3 digits that don't need to be in any
-        particular order, as long as it isn't already in use.
-        """
-        while True:
-            tag_id = f"TAG{random.randint(1, 999):03d}"
-            already_pending = any(pending_tag == tag_id for pending_tag, _ in self.pending_items)
-            already_saved = database.get_item_by_tag(tag_id) is not None
-            if not already_pending and not already_saved:
-                return tag_id
-
-    def _on_scan_simulated(self):
-        """
-        Called when the user clicks "Scan (Simulated)".
-
-        Only does anything while the entry reader is running in
-        simulated mode - generates a Tag ID and pushes it through the
-        same queue a real reader would use, so _handle_entry_scan()
-        below is the single code path either way.
-        """
-        if not isinstance(self.entry_reader, SimulatedReader):
-            messagebox.showinfo(
-                "Real reader active",
-                "The entry reader is configured for real hardware in "
-                "hardware_config.json - it scans automatically. This button "
-                "only does something in simulated mode.",
-            )
-            return
-
-        tag_id = self._generate_tag_id()
-        self.entry_reader.simulate_scan(tag_id)
-
     def _on_entry_scan(self):
         """
         Called when Enter is pressed in the "Scan / type Tag ID" field
         - either a person typed it, or (the actual point of this
         field) a real USB RFID reader "typed" it and sent Enter on its
-        own. Pushes it through the same queue _on_scan_simulated()
-        uses, so _handle_entry_scan() is the single code path either
-        way. See the field's comment in _build_widgets() for why a
-        keyboard-wedge reader needs a focused text field instead of
-        the serial/COM-port handling hardware/serial_reader.py has.
+        own. Pushes it through entry_reader.simulate_scan(), the same
+        queue a real reader would use, so _handle_entry_scan() below
+        is the single processing path either way. See the field's
+        comment in _build_widgets() for why a keyboard-wedge reader
+        needs a focused text field instead of the serial/COM-port
+        handling hardware/serial_reader.py has.
         """
         tag_id = self.entry_tag_entry.get().strip().upper()
 
@@ -363,10 +325,11 @@ class LinenApp:
     def _handle_entry_scan(self, tag_id):
         """
         Called for every tag read from the entry reader - whether it
-        came from a real scan, the "Scan (Simulated)" button, or the
-        "Scan / type Tag ID" field. Adds the tag to the pending list
-        (with whatever Item Type is currently selected in the
-        dropdown), waiting to be assigned to a customer and room.
+        came from a real reader running in serial mode, or the "Scan /
+        type Tag ID" field (a real keyboard-wedge reader, or someone
+        typing by hand). Adds the tag to the pending list (with
+        whatever Item Type is currently selected in the dropdown),
+        waiting to be assigned to a customer and room.
 
         A real reader keeps reading the same tag over and over for as
         long as it's in range (many times a second) rather than
@@ -394,8 +357,8 @@ class LinenApp:
         Called when the user clicks "Remove Selected Pending Item".
 
         Removes whichever row is selected in the Pending Items table -
-        useful for undoing an accidental "Scan (Simulated)" click
-        before it gets assigned to a customer.
+        useful for undoing an accidental or mis-scanned tag before it
+        gets assigned to a customer.
         """
         selected = self.pending_tree.selection()
 
