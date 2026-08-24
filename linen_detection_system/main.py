@@ -10,11 +10,14 @@ Two RFID checkpoints feed this app: an entry reader (registering new
 items into the pending list) and an exit reader (theft detection).
 Both are built on the same generic reader abstraction in hardware/ -
 by default (hardware_config.json missing or unconfigured) both are
-SimulatedReader instances, driven by the "Scan (Simulated)" button and
-the exit scanner's manual Tag ID field, exactly like before. Once real
-hardware is chosen and hardware_config.json points a role at a serial
-port, that same role starts scanning on its own in the background -
-see hardware/serial_reader.py for what's still a placeholder there.
+SimulatedReader instances, driven by the "Scan (Simulated)" button, the
+"Scan / type Tag ID" field, and the exit scanner's manual Tag ID field.
+A real USB "keyboard wedge" RFID reader - the kind that just types the
+tag ID and presses Enter, no COM port involved - works today through
+either of those text fields, no configuration needed; see their
+comments in _build_widgets(). hardware_config.json is only for a
+reader that talks over a real serial port instead - see
+hardware/serial_reader.py for what's still a placeholder there.
 """
 
 import random
@@ -105,6 +108,29 @@ class LinenApp:
         self.item_type_combo = ttk.Combobox(scan_frame, values=ITEM_TYPES, state="readonly", width=14)
         self.item_type_combo.current(0)
         self.item_type_combo.pack(side="left")
+
+        # --- Real scanner input: for the actual USB RFID reader ---
+        # This reader (and every "USB scanner"/"keyboard wedge" reader
+        # like it) doesn't talk over a COM port - to the OS it's just a
+        # keyboard. It types the tag ID as keystrokes into whatever
+        # field currently has focus, then sends Enter. So instead of
+        # hardware/serial_reader.py's approach (open a port, parse raw
+        # bytes), all this needs is a plain Entry field to be focused
+        # when a tag is scanned - <Return> below is what actually reads
+        # the scan, whether it was typed by a person or a real reader.
+        # Goes through entry_reader.simulate_scan() same as the button
+        # above, so _handle_entry_scan() is still the one code path
+        # either way - see its docstring for the duplicate-scan check
+        # this needed once a real reader was in the picture (a tag
+        # sitting in range gets read - and would get re-added - many
+        # times a second otherwise).
+        scan_frame2 = ttk.Frame(self.root, padding=(10, 0, 10, 10))
+        scan_frame2.pack(fill="x")
+        ttk.Label(scan_frame2, text="Scan / type Tag ID:").pack(side="left")
+        self.entry_tag_entry = ttk.Entry(scan_frame2, width=28)
+        self.entry_tag_entry.pack(side="left", padx=(6, 0))
+        self.entry_tag_entry.bind("<Return>", lambda event: self._on_entry_scan())
+        self.entry_tag_entry.focus_set()
 
         # --- Pending scans: items scanned but not yet assigned ---
         ttk.Label(self.root, text="Pending Items (scanned, not yet assigned):").pack(
@@ -313,14 +339,49 @@ class LinenApp:
         tag_id = self._generate_tag_id()
         self.entry_reader.simulate_scan(tag_id)
 
+    def _on_entry_scan(self):
+        """
+        Called when Enter is pressed in the "Scan / type Tag ID" field
+        - either a person typed it, or (the actual point of this
+        field) a real USB RFID reader "typed" it and sent Enter on its
+        own. Pushes it through the same queue _on_scan_simulated()
+        uses, so _handle_entry_scan() is the single code path either
+        way. See the field's comment in _build_widgets() for why a
+        keyboard-wedge reader needs a focused text field instead of
+        the serial/COM-port handling hardware/serial_reader.py has.
+        """
+        tag_id = self.entry_tag_entry.get().strip().upper()
+
+        self.entry_tag_entry.delete(0, tk.END)
+        self.entry_tag_entry.focus_set()
+
+        if not tag_id:
+            return
+
+        self.entry_reader.simulate_scan(tag_id)
+
     def _handle_entry_scan(self, tag_id):
         """
         Called for every tag read from the entry reader - whether it
-        came from a real scan or the "Scan (Simulated)" button. Adds
-        the tag to the pending list (with whatever Item Type is
-        currently selected in the dropdown), waiting to be assigned to
-        a customer and room.
+        came from a real scan, the "Scan (Simulated)" button, or the
+        "Scan / type Tag ID" field. Adds the tag to the pending list
+        (with whatever Item Type is currently selected in the
+        dropdown), waiting to be assigned to a customer and room.
+
+        A real reader keeps reading the same tag over and over for as
+        long as it's in range (many times a second) rather than
+        reading it once - without this check, one physical scan would
+        add the same tag to the pending list dozens of times. Once the
+        tag is assigned (or removed from pending), it's no longer
+        "already pending", so scanning it again later works normally -
+        this only blocks re-adding it while it's still sitting in the
+        current batch.
         """
+        already_pending = any(pending_tag == tag_id for pending_tag, _ in self.pending_items)
+        if already_pending:
+            self.status_label.config(text=f"{tag_id} is already in the pending list - ignored repeat scan.")
+            return
+
         item_type = self.item_type_combo.get()
 
         self.pending_items.append((tag_id, item_type))

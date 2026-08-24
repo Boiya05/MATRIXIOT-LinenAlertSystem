@@ -84,6 +84,15 @@ setup and what gets logged where.
 - Click **Scan (Simulated)** to simulate an RFID reader picking up a tag.
   Each click adds a random Tag ID + Item Type to the **Pending Items**
   table (as if the tag itself already encodes both).
+- Or use the **Scan / type Tag ID** field for an actual USB RFID
+  reader - the "keyboard wedge" kind that just types the tag ID and
+  presses Enter, no COM port or configuration needed (this is the
+  first reader type this app supports for real - see **Hardware
+  setup** below). Click into the field once so it has focus, then
+  scan away; it clears and refocuses itself after each tag, and a
+  tag still sitting in range - which a real reader reads many times a
+  second, not once - only gets added to the pending list the first
+  time, not once per read.
 - Scan as many items as you like - they all wait in the pending list.
 - Type a **Customer Name** and **Room Number**, then click **Assign** to
   apply those details to *every* pending item at once and save them all
@@ -246,6 +255,15 @@ when registering new items) and an **exit reader** (used for theft
 detection) - and each is built on the same `hardware/` abstraction, so
 either one can be simulated or a real serial reader independently of
 the other.
+
+**If your reader is a USB "keyboard wedge" scanner** (types the tag ID
+and presses Enter, shows up as a keyboard to Windows, no COM port) -
+you don't need anything below this. That kind of reader already works
+today through the **Scan / type Tag ID** field (registering) and the
+**Exit Scanner** field (theft detection) - just click into whichever
+field so it has focus, then scan. Everything below is for a reader
+that instead talks over a real serial port, which needs the setup
+(and the still-unwritten protocol parsing) described here.
 
 **How it's structured:**
 
