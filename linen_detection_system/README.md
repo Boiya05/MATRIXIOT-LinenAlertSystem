@@ -103,14 +103,16 @@ setup and what gets logged where.
   way the pending list clears and the items show up in the **Saved
   Items** table.
 
-**Assign to Guest (already-registered tags):** a separate section for
-attaching a Customer Name + Room Number to a tag that's already in the
-database - either stock that was registered without one above, or an
-item being handed to a different guest than before. Scan or type the
-Tag ID, fill in Customer Name + Room Number, click **Assign to
-Guest** (or press Enter in the Tag ID field). Flips the item's status
-to **In Use**. If the tag isn't registered yet, this tells you instead
-of guessing - register it above first.
+**Assign to Guest (already-registered tags):** a separate section, batch
+like the Save section above, for attaching one Customer Name + Room
+Number to any number of tags that are already in the database - either
+stock that was registered without one above, or items being handed to
+a different guest than before. Scan or type a Tag ID and click **Add**
+(or press Enter) to queue it - repeat for as many tags as this guest
+is getting - then fill in Customer Name + Room Number and click
+**Assign to Guest** to apply both to everything queued at once. Flips
+each item's status to **In Use**. Scanning a tag that isn't registered
+yet tells you instead of guessing - register it above first.
 
 **Item status:**
 - Every saved item has a status shown in the Saved Items table:

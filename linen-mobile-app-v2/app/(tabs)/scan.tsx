@@ -354,11 +354,12 @@ function RegisterSection() {
 }
 
 /**
- * The other half of Register items' optional-guest flow: scan a tag
- * that's already registered (whether it was left unassigned on
- * purpose, or is being handed to a different guest than before) and
- * attach a Customer Name + Room Number to it. Doesn't touch Item
- * Type - that was already decided at registration.
+ * The other half of Register items' optional-guest flow: scan any
+ * number of already-registered tags (whether left unassigned on
+ * purpose, or being handed to a different guest than before), then
+ * attach one Customer Name + Room Number to all of them at once -
+ * same batch pattern as Register items' pending list. Doesn't touch
+ * Item Type - that was already decided at registration.
  */
 function AssignToGuestSection() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -366,7 +367,7 @@ function AssignToGuestSection() {
 
   const [manualTagId, setManualTagId] = useState('');
   const [looking, setLooking] = useState(false);
-  const [found, setFound] = useState<LinenItem | null>(null);
+  const [pending, setPending] = useState<LinenItem[]>([]);
   const [notFoundTagId, setNotFoundTagId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
@@ -377,65 +378,77 @@ function AssignToGuestSection() {
     const tagId = manualTagId.trim().toUpperCase();
     if (!tagId) return;
 
+    setManualTagId('');
+    if (pending.some((item) => item.tagId === tagId)) {
+      setStatus(`${tagId} is already in the list.`);
+      return; // already queued - don't re-fetch or add it twice
+    }
+
     setLooking(true);
     setStatus(null);
     setNotFoundTagId(null);
     try {
       const item = await getItemByTag(tagId);
       if (!item) {
-        setFound(null);
         setNotFoundTagId(tagId);
       } else {
-        setFound(item);
-        setCustomerName(item.customerName);
-        setRoomNumber(item.roomNumber);
+        setPending((current) => [...current, item]);
       }
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Failed to look up tag.');
     } finally {
       setLooking(false);
-      setManualTagId('');
     }
   }
 
+  function removePending(tagId: string) {
+    setPending((current) => current.filter((item) => item.tagId !== tagId));
+  }
+
   async function handleAssign() {
-    if (!found) return;
-    if (!customerName.trim() || !roomNumber.trim()) {
+    if (pending.length === 0) return;
+    const trimmedCustomer = customerName.trim();
+    const trimmedRoom = roomNumber.trim();
+    if (!trimmedCustomer || !trimmedRoom) {
       setStatus('Fill in Customer Name and Room Number.');
       return;
     }
 
     setSaving(true);
     try {
-      const updated: LinenItem = {
-        ...found,
-        customerName: customerName.trim(),
-        roomNumber: roomNumber.trim(),
-        status: 'In Use',
-      };
-      await saveLinenItem(updated);
-      logItemEvent({
-        tagId: updated.tagId,
-        eventType: 'status_changed',
-        oldStatus: found.status,
-        newStatus: 'In Use',
-        customerName: updated.customerName,
-        roomNumber: updated.roomNumber,
-        detail: updated.itemType,
-      }).catch((err) => console.warn('Failed to log audit event:', err));
-      setStatus(`Assigned ${updated.tagId} to ${updated.customerName}.`);
-      setFound(null);
+      for (const item of pending) {
+        const updated: LinenItem = {
+          ...item,
+          customerName: trimmedCustomer,
+          roomNumber: trimmedRoom,
+          status: 'In Use',
+        };
+        await saveLinenItem(updated);
+        logItemEvent({
+          tagId: updated.tagId,
+          eventType: 'status_changed',
+          oldStatus: item.status,
+          newStatus: 'In Use',
+          customerName: trimmedCustomer,
+          roomNumber: trimmedRoom,
+          detail: updated.itemType,
+        }).catch((err) => console.warn('Failed to log audit event:', err));
+      }
+      setStatus(`Assigned ${pending.length} item(s) to ${trimmedCustomer}.`);
+      setPending([]);
       setCustomerName('');
       setRoomNumber('');
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : 'Failed to assign item.');
+      setStatus(err instanceof Error ? err.message : 'Failed to assign items.');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <SectionCard title="🙋 Assign to guest" subtitle="Scan an already-registered tag to attach (or change) a guest and room.">
+    <SectionCard
+      title="🙋 Assign to guest"
+      subtitle="Scan already-registered tags, then assign them all to one guest and room at once.">
       <View style={styles.exitRow}>
         <TextInput
           style={[
@@ -456,7 +469,7 @@ function AssignToGuestSection() {
           disabled={looking}
           style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: looking ? 0.6 : 1 }]}>
           <ThemedText style={{ color: colors.background, fontWeight: '700' }}>
-            {looking ? 'Looking…' : 'Look up'}
+            {looking ? 'Looking…' : 'Add'}
           </ThemedText>
         </PressableScale>
       </View>
@@ -467,49 +480,57 @@ function AssignToGuestSection() {
         </ThemedText>
       )}
 
-      {found ? (
-        <View
-          style={[
-            styles.resultBanner,
-            { backgroundColor: `${colors.statusInUse}18`, borderColor: colors.statusInUse },
-          ]}>
-          <ThemedText style={{ color: colors.text, fontSize: 13, marginBottom: 10 }}>
-            <ThemedText style={{ fontFamily: 'monospace', fontSize: 13 }}>{found.tagId}</ThemedText>
-            {` · ${found.itemType} · currently ${found.status}`}
-            {found.customerName ? ` · ${found.customerName}` : ''}
-          </ThemedText>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, marginBottom: 8 }]}
-            placeholder="Customer name"
-            placeholderTextColor={colors.textSecondary}
-            value={customerName}
-            onChangeText={setCustomerName}
-          />
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, marginBottom: 10 }]}
-            placeholder="Room number"
-            placeholderTextColor={colors.textSecondary}
-            value={roomNumber}
-            onChangeText={setRoomNumber}
-          />
-          <PressableScale
-            onPress={handleAssign}
-            disabled={saving}
-            style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving ? 0.6 : 1 }]}>
-            {saving ? (
-              <ActivityIndicator color={colors.background} />
-            ) : (
-              <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Assign</ThemedText>
-            )}
-          </PressableScale>
-        </View>
-      ) : (
-        !notFoundTagId && (
+      <View style={[styles.pendingList, { borderColor: colors.border }]}>
+        {pending.length === 0 ? (
           <ThemedText style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', padding: 14 }}>
-            Scan a tag to assign it.
+            No items scanned yet.
           </ThemedText>
-        )
-      )}
+        ) : (
+          pending.map((item) => (
+            <View key={item.tagId} style={[styles.pendingRow, { borderColor: colors.border }]}>
+              <ThemedText style={{ fontSize: 13 }}>
+                <ThemedText style={{ fontFamily: 'monospace', fontSize: 13 }}>{item.tagId}</ThemedText>
+                {'  '}
+                <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  {item.itemType} · {item.status}
+                  {item.customerName ? ` · ${item.customerName}` : ''}
+                </ThemedText>
+              </ThemedText>
+              <PressableScale onPress={() => removePending(item.tagId)}>
+                <ThemedText style={{ color: colors.danger, fontSize: 12 }}>Remove</ThemedText>
+              </PressableScale>
+            </View>
+          ))
+        )}
+      </View>
+
+      <TextInput
+        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+        placeholder="Customer name"
+        placeholderTextColor={colors.textSecondary}
+        value={customerName}
+        onChangeText={setCustomerName}
+      />
+      <TextInput
+        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+        placeholder="Room number"
+        placeholderTextColor={colors.textSecondary}
+        value={roomNumber}
+        onChangeText={setRoomNumber}
+      />
+
+      <PressableScale
+        onPress={handleAssign}
+        disabled={saving}
+        style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving ? 0.6 : 1 }]}>
+        {saving ? (
+          <ActivityIndicator color={colors.background} />
+        ) : (
+          <ThemedText style={{ color: colors.background, fontWeight: '700' }}>
+            {pending.length > 1 ? `Assign ${pending.length} items` : 'Assign'}
+          </ThemedText>
+        )}
+      </PressableScale>
 
       {status && <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>{status}</ThemedText>}
     </SectionCard>

@@ -26,14 +26,15 @@ the one running the Python app.
   any device remove them) with a dismiss button.
 - **Scan** (`/scan`) — three independent sections: **Register items**
   (scan tags into a category - guest/room are optional, leave them
-  blank to save as unassigned stock), **Assign to guest** (scan an
-  already-registered tag to attach or change its guest/room), and
-  **Exit scanner** (the theft check). The two entry-side sections
-  default to **Simulated** mode - really a manual Tag ID field, works
-  in any browser, no hardware needed, and is also how a real USB
-  "keyboard wedge" RFID reader reaches this page (see **Real hardware
-  from the browser** below) - and can switch to **Web Serial** mode
-  instead for a reader that talks over a real serial connection.
+  blank to save as unassigned stock), **Assign to guest** (scan any
+  number of already-registered tags, then attach or change one
+  guest/room for all of them at once), and **Exit scanner** (the theft
+  check). The two entry-side sections default to **Simulated** mode -
+  really a manual Tag ID field, works in any browser, no hardware
+  needed, and is also how a real USB "keyboard wedge" RFID reader
+  reaches this page (see **Real hardware from the browser** below) -
+  and can switch to **Web Serial** mode instead for a reader that
+  talks over a real serial connection.
 - **Inventory** (`/inventory`) — every linen item, with a status
   filter, a search box (tag, guest, room, item type), and checkboxes
   to bulk-delete selected items (staff only).

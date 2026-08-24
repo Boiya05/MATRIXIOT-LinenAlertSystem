@@ -89,9 +89,10 @@ between **Simulated** and **USB reader** mode where relevant:
   category (Item Type). Customer Name + Room Number are optional -
   leave them blank to save the tags as unassigned stock (status
   Storage), or fill them in to also assign a guest in this same step.
-- **Assign to guest** - the other half of that: scan an
-  already-registered tag, then attach (or change) a Customer Name +
-  Room Number for it, flipping its status to In Use.
+- **Assign to guest** - the other half of that: scan any number of
+  already-registered tags, then attach (or change) one Customer Name +
+  Room Number for all of them at once, flipping each one's status to
+  In Use.
 - **Exit scanner** - a Tag ID (typed, or from a real reader) runs
   through the same theft rule as `detector.py` (`lib/detector.ts`
   here); a flagged scan writes a `theft_alerts` row the same way the
