@@ -43,8 +43,8 @@ class LinenApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Linen RFID Detection System")
-        self.root.geometry("650x650")
-        self.root.minsize(550, 550)
+        self.root.geometry("700x820")
+        self.root.minsize(600, 650)
 
         # Items that have been scanned but not yet assigned to a
         # customer/room. Each entry is a (tag_id, item_type) tuple.
@@ -144,20 +144,55 @@ class LinenApp:
         )
         remove_pending_button.pack(anchor="e", padx=10, pady=(0, 10))
 
-        # --- Assign section: apply one customer/room to all pending items ---
+        # --- Save section: apply one customer/room to all pending items ---
+        # Customer Name and Room Number are both optional - leave them
+        # blank to register the pending tags as unassigned stock (see
+        # _on_assign()'s docstring), or fill them in to also assign a
+        # guest in this same step.
         assign_frame = ttk.Frame(self.root, padding=10)
         assign_frame.pack(fill="x")
 
-        ttk.Label(assign_frame, text="Customer Name:").grid(row=0, column=0, sticky="w", pady=2)
+        ttk.Label(assign_frame, text="Customer Name (optional):").grid(
+            row=0, column=0, sticky="w", pady=2
+        )
         self.customer_entry = ttk.Entry(assign_frame, width=25)
         self.customer_entry.grid(row=0, column=1, padx=5, pady=2)
 
-        ttk.Label(assign_frame, text="Room Number:").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(assign_frame, text="Room Number (optional):").grid(
+            row=1, column=0, sticky="w", pady=2
+        )
         self.room_entry = ttk.Entry(assign_frame, width=25)
         self.room_entry.grid(row=1, column=1, padx=5, pady=2)
 
-        assign_button = ttk.Button(assign_frame, text="Assign", command=self._on_assign)
+        assign_button = ttk.Button(assign_frame, text="Save", command=self._on_assign)
         assign_button.grid(row=2, column=0, columnspan=2, pady=8)
+
+        # --- Assign to Guest section: attach a customer/room to a tag
+        #     that's already registered (scanned above with the
+        #     customer/room fields left blank, or being reassigned to
+        #     a different guest than before). ---
+        assign_guest_frame = ttk.LabelFrame(
+            self.root, text="Assign to Guest (already-registered tag)", padding=10
+        )
+        assign_guest_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ttk.Label(assign_guest_frame, text="Tag ID:").grid(row=0, column=0, sticky="w", pady=2)
+        self.assign_tag_entry = ttk.Entry(assign_guest_frame, width=25)
+        self.assign_tag_entry.grid(row=0, column=1, padx=5, pady=2)
+        self.assign_tag_entry.bind("<Return>", lambda event: self._on_assign_to_guest())
+
+        ttk.Label(assign_guest_frame, text="Customer Name:").grid(row=1, column=0, sticky="w", pady=2)
+        self.assign_customer_entry = ttk.Entry(assign_guest_frame, width=25)
+        self.assign_customer_entry.grid(row=1, column=1, padx=5, pady=2)
+
+        ttk.Label(assign_guest_frame, text="Room Number:").grid(row=2, column=0, sticky="w", pady=2)
+        self.assign_room_entry = ttk.Entry(assign_guest_frame, width=25)
+        self.assign_room_entry.grid(row=2, column=1, padx=5, pady=2)
+
+        assign_to_guest_button = ttk.Button(
+            assign_guest_frame, text="Assign to Guest", command=self._on_assign_to_guest
+        )
+        assign_to_guest_button.grid(row=3, column=0, columnspan=2, pady=6)
 
         # --- Status line: shows the result of the last action ---
         self.status_label = ttk.Label(self.root, text="", foreground="green")
@@ -378,24 +413,29 @@ class LinenApp:
 
     def _on_assign(self):
         """
-        Called when the user clicks "Assign".
+        Called when the user clicks "Save".
 
-        Applies the entered Customer Name and Room Number to every
-        pending item at once, saves each one to the database, and
-        clears the pending list.
+        Applies whatever Customer Name / Room Number is entered - both
+        optional - to every pending item at once and saves each one to
+        the database, then clears the pending list.
+
+        Leaving Customer Name and Room Number blank saves the tags as
+        unassigned stock, sorted only by Item Type (status Storage -
+        "not currently with any customer", which is exactly what this
+        is). Use the "Assign to Guest" section below to attach a
+        customer to them later. Filling both in here does registration
+        and assignment in one step, same as this used to always
+        require.
         """
         customer_name = self.customer_entry.get().strip()
         room_number = self.room_entry.get().strip()
 
         if not self.pending_items:
-            messagebox.showwarning("Nothing to Assign", "Scan at least one item first.")
+            messagebox.showwarning("Nothing to Save", "Scan at least one item first.")
             return
 
-        if not customer_name or not room_number:
-            messagebox.showwarning(
-                "Missing Details", "Please fill in Customer Name and Room Number."
-            )
-            return
+        assigning_now = bool(customer_name or room_number)
+        status = STATUS_IN_USE if assigning_now else STATUS_STORAGE
 
         for tag_id, item_type in self.pending_items:
             item = LinenItem(
@@ -403,18 +443,19 @@ class LinenApp:
                 customer_name=customer_name,
                 room_number=room_number,
                 item_type=item_type,
+                status=status,
             )
             database.save_linen_item(item)
             self._log_event(
                 tag_id,
                 "registered",
-                new_status=item.status,
-                customer_name=customer_name,
-                room_number=room_number,
+                new_status=status,
+                customer_name=customer_name or None,
+                room_number=room_number or None,
                 detail=item_type,
             )
 
-        assigned_count = len(self.pending_items)
+        saved_count = len(self.pending_items)
 
         self.pending_items.clear()
         for row in self.pending_tree.get_children():
@@ -423,7 +464,70 @@ class LinenApp:
         self.customer_entry.delete(0, tk.END)
         self.room_entry.delete(0, tk.END)
 
-        self.status_label.config(text=f"Assigned {assigned_count} item(s) to {customer_name}.")
+        if assigning_now:
+            self.status_label.config(text=f"Saved and assigned {saved_count} item(s) to {customer_name}.")
+        else:
+            self.status_label.config(text=f"Saved {saved_count} item(s) as unassigned stock.")
+        self._refresh_item_table()
+
+    def _on_assign_to_guest(self):
+        """
+        Called when the user clicks "Assign to Guest" (or presses
+        Enter in its Tag ID field).
+
+        Looks up an already-registered tag and attaches a Customer
+        Name + Room Number to it, flipping its status to In Use - the
+        other half of registering with those fields left blank in
+        _on_assign() above, and also works to reassign an item that's
+        already with a different guest.
+        """
+        tag_id = self.assign_tag_entry.get().strip().upper()
+        customer_name = self.assign_customer_entry.get().strip()
+        room_number = self.assign_room_entry.get().strip()
+
+        if not tag_id:
+            messagebox.showwarning("Missing Tag ID", "Scan or type a Tag ID first.")
+            return
+
+        item = database.get_item_by_tag(tag_id)
+        if item is None:
+            messagebox.showwarning(
+                "Not Registered",
+                f"{tag_id} isn't registered yet - register it above first.",
+            )
+            return
+
+        if not customer_name or not room_number:
+            messagebox.showwarning(
+                "Missing Details", "Please fill in Customer Name and Room Number."
+            )
+            return
+
+        old_status = item.status
+        updated_item = LinenItem(
+            tag_id=item.tag_id,
+            customer_name=customer_name,
+            room_number=room_number,
+            item_type=item.item_type,
+            status=STATUS_IN_USE,
+        )
+        database.save_linen_item(updated_item)
+        self._log_event(
+            tag_id,
+            "status_changed",
+            old_status=old_status,
+            new_status=STATUS_IN_USE,
+            customer_name=customer_name,
+            room_number=room_number,
+            detail=item.item_type,
+        )
+
+        self.assign_tag_entry.delete(0, tk.END)
+        self.assign_customer_entry.delete(0, tk.END)
+        self.assign_room_entry.delete(0, tk.END)
+        self.assign_tag_entry.focus_set()
+
+        self.status_label.config(text=f"Assigned {tag_id} to {customer_name}.")
         self._refresh_item_table()
 
     def _on_exit_scan(self):

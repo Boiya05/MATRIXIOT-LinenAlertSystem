@@ -24,16 +24,19 @@ the one running the Python app.
 - **Dashboard** (`/`) — live item-status counts, and active theft
   alerts that update in real time (new alerts appear, dismissals from
   any device remove them) with a dismiss button.
-- **Scan** (`/scan`) — register new items (scan + assign a guest/room)
-  and run the exit-scanner theft check, in two independent sections
-  matching the desktop app's two checkpoints. Each defaults to
-  **Simulated** mode - really a manual Tag ID field, works in any
-  browser, no hardware needed, and is also how a real USB "keyboard
-  wedge" RFID reader reaches this page (see **Real hardware from the
-  browser** below) - and can switch to **Web Serial** mode instead for
-  a reader that talks over a real serial connection.
+- **Scan** (`/scan`) — three independent sections: **Register items**
+  (scan tags into a category - guest/room are optional, leave them
+  blank to save as unassigned stock), **Assign to guest** (scan an
+  already-registered tag to attach or change its guest/room), and
+  **Exit scanner** (the theft check). The two entry-side sections
+  default to **Simulated** mode - really a manual Tag ID field, works
+  in any browser, no hardware needed, and is also how a real USB
+  "keyboard wedge" RFID reader reaches this page (see **Real hardware
+  from the browser** below) - and can switch to **Web Serial** mode
+  instead for a reader that talks over a real serial connection.
 - **Inventory** (`/inventory`) — every linen item, with a status
-  filter and a search box (tag, guest, room, item type).
+  filter, a search box (tag, guest, room, item type), and checkboxes
+  to bulk-delete selected items (staff only).
 - **Alert history** (`/history`) — every already-dismissed alert,
   newest first.
 - **Activity** (`/activity`) — the audit trail: who registered,
@@ -188,10 +191,11 @@ every single one of those reads.
 ## Current status
 
 Working: login, live dashboard stats, live theft alerts with dismiss,
-searchable/filterable inventory, alert history, and now item
-registration + exit-scan theft detection (simulated by default, real
-USB hardware via Web Serial once a reader is connected) - all reading
-and writing the same Supabase project as the desktop and mobile apps,
+searchable/filterable inventory with bulk delete, alert history, the
+audit trail (Activity), and item registration (optional guest/room,
+real USB hardware via a manual field or Web Serial) + a separate
+Assign to guest step + exit-scan theft detection - all reading and
+writing the same Supabase project as the desktop and mobile apps,
 protected by the same Row Level Security policies. Verified against
 live data before being committed: a full register → assign → exit-scan
 → theft-alert-logged pass through the real UI, using a throwaway test

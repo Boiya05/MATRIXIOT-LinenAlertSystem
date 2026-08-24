@@ -82,13 +82,16 @@ scrollable theft-alerts section. New alerts appear automatically while
 the app is open (Supabase Realtime); press **OK** on an alert to
 dismiss it.
 
-**Scan** - two independent sections, matching the desktop app's two
-checkpoints, each independently switchable between **Simulated** and
-**USB reader** mode:
+**Scan** - three independent sections, each independently switchable
+between **Simulated** and **USB reader** mode where relevant:
 - **Register items** - scan a tag (a Tag ID field, typed by hand or
-  from a real USB "keyboard wedge" scanner - see below), then assign a
-  Customer Name + Room Number to everything scanned so far, same
-  batch-assign flow as the desktop app.
+  from a real USB "keyboard wedge" scanner - see below) into a
+  category (Item Type). Customer Name + Room Number are optional -
+  leave them blank to save the tags as unassigned stock (status
+  Storage), or fill them in to also assign a guest in this same step.
+- **Assign to guest** - the other half of that: scan an
+  already-registered tag, then attach (or change) a Customer Name +
+  Room Number for it, flipping its status to In Use.
 - **Exit scanner** - a Tag ID (typed, or from a real reader) runs
   through the same theft rule as `detector.py` (`lib/detector.ts`
   here); a flagged scan writes a `theft_alerts` row the same way the

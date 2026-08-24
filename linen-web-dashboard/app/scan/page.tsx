@@ -43,16 +43,20 @@ export default function ScanPage() {
             Scan
           </h1>
           <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">
-            Register new items and run the exit-scanner theft check, right from this browser.
+            Register new items, assign them to a guest, and run the exit-scanner theft check -
+            right from this browser.
           </p>
         </div>
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="mb-6 grid gap-6 lg:grid-cols-2">
           <div className="animate-fade-in-up">
             <RegisterSection />
           </div>
           <div className="animate-fade-in-up" style={{ animationDelay: '80ms' }}>
-            <ExitScannerSection />
+            <AssignToGuestSection />
           </div>
+        </div>
+        <div className="animate-fade-in-up" style={{ animationDelay: '140ms' }}>
+          <ExitScannerSection />
         </div>
       </main>
     </Protected>
@@ -150,37 +154,48 @@ function RegisterSection() {
     setPending((current) => current.filter((p) => p.tagId !== tagId));
   }
 
-  async function handleAssign() {
+  async function handleSave() {
     if (pending.length === 0) {
       setStatus('Scan at least one item first.');
       return;
     }
-    if (!customerName.trim() || !roomNumber.trim()) {
-      setStatus('Fill in Customer Name and Room Number.');
-      return;
-    }
+
+    // Customer/room are optional - leave them blank to register tags
+    // as unassigned stock, sorted into categories by Item Type alone
+    // (status 'Storage', matching what that status already means:
+    // "not currently with any customer"). Fill them in to assign a
+    // guest right away instead, same one-step flow as before. Either
+    // way, use the "Assign to guest" section later to attach a guest
+    // to stock that was registered without one.
+    const trimmedCustomer = customerName.trim();
+    const trimmedRoom = roomNumber.trim();
+    const assigningNow = trimmedCustomer !== '' || trimmedRoom !== '';
 
     setSaving(true);
     try {
       for (const item of pending) {
         const linenItem: LinenItem = {
           tagId: item.tagId,
-          customerName: customerName.trim(),
-          roomNumber: roomNumber.trim(),
+          customerName: trimmedCustomer,
+          roomNumber: trimmedRoom,
           itemType: item.itemType,
-          status: 'In Use',
+          status: assigningNow ? 'In Use' : 'Storage',
         };
         await saveLinenItem(linenItem);
         logItemEvent({
           tagId: linenItem.tagId,
           eventType: 'registered',
           newStatus: linenItem.status,
-          customerName: linenItem.customerName,
-          roomNumber: linenItem.roomNumber,
+          customerName: linenItem.customerName || null,
+          roomNumber: linenItem.roomNumber || null,
           detail: linenItem.itemType,
         }).catch((err) => console.warn('Failed to log audit event:', err));
       }
-      setStatus(`✅ Assigned ${pending.length} item(s) to ${customerName.trim()}.`);
+      setStatus(
+        assigningNow
+          ? `✅ Registered and assigned ${pending.length} item(s) to ${trimmedCustomer}.`
+          : `✅ Registered ${pending.length} item(s) as unassigned stock.`
+      );
       setPending([]);
       setCustomerName('');
       setRoomNumber('');
@@ -199,7 +214,8 @@ function RegisterSection() {
             📝 Register items
           </h2>
           <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">
-            Scan a tag, then assign a guest and room.
+            Scan tags into a category. Guest and room are optional here - assign them now, or
+            later in &quot;Assign to guest&quot;.
           </p>
         </div>
         <ReaderModeSwitch
@@ -288,7 +304,7 @@ function RegisterSection() {
       <div className="mb-4 grid grid-cols-2 gap-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-            Customer name
+            Customer name (optional)
           </label>
           <input
             value={customerName}
@@ -298,7 +314,7 @@ function RegisterSection() {
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-            Room number
+            Room number (optional)
           </label>
           <input
             value={roomNumber}
@@ -309,13 +325,182 @@ function RegisterSection() {
       </div>
 
       <button
-        onClick={handleAssign}
+        onClick={handleSave}
         disabled={saving || !isStaff}
         title={!isStaff ? 'Staff access required' : undefined}
         className="w-full rounded-lg bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-600/30 transition-all hover:shadow-lg hover:shadow-teal-600/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
       >
-        {saving ? 'Saving…' : 'Assign'}
+        {saving ? 'Saving…' : pending.length > 0 && (customerName.trim() || roomNumber.trim()) ? 'Save & assign' : 'Save'}
       </button>
+
+      {status && <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">{status}</p>}
+    </section>
+  );
+}
+
+/**
+ * The other half of Register items' optional-guest flow: scan a tag
+ * that's already registered (whether it was left unassigned on
+ * purpose, or is being handed to a different guest than before) and
+ * attach a Customer Name + Room Number to it. Doesn't touch Item
+ * Type - that was already decided at registration.
+ */
+function AssignToGuestSection() {
+  const { isStaff, roleLoading } = useAuth();
+  const [manualTagId, setManualTagId] = useState('');
+  const [looking, setLooking] = useState(false);
+  const [found, setFound] = useState<LinenItem | null>(null);
+  const [notFoundTagId, setNotFoundTagId] = useState<string | null>(null);
+  const [customerName, setCustomerName] = useState('');
+  const [roomNumber, setRoomNumber] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  async function handleLookup() {
+    if (!isStaff) return;
+    const tagId = manualTagId.trim().toUpperCase();
+    if (!tagId) return;
+
+    setLooking(true);
+    setStatus(null);
+    setNotFoundTagId(null);
+    try {
+      const item = await getItemByTag(tagId);
+      if (!item) {
+        setFound(null);
+        setNotFoundTagId(tagId);
+      } else {
+        setFound(item);
+        setCustomerName(item.customerName);
+        setRoomNumber(item.roomNumber);
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'Failed to look up tag.');
+    } finally {
+      setLooking(false);
+      setManualTagId('');
+    }
+  }
+
+  async function handleAssign() {
+    if (!found || !isStaff) return;
+    if (!customerName.trim() || !roomNumber.trim()) {
+      setStatus('Fill in Customer Name and Room Number.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated: LinenItem = {
+        ...found,
+        customerName: customerName.trim(),
+        roomNumber: roomNumber.trim(),
+        status: 'In Use',
+      };
+      await saveLinenItem(updated);
+      logItemEvent({
+        tagId: updated.tagId,
+        eventType: 'status_changed',
+        oldStatus: found.status,
+        newStatus: 'In Use',
+        customerName: updated.customerName,
+        roomNumber: updated.roomNumber,
+        detail: updated.itemType,
+      }).catch((err) => console.warn('Failed to log audit event:', err));
+      setStatus(`✅ Assigned ${updated.tagId} to ${updated.customerName}.`);
+      setFound(null);
+      setCustomerName('');
+      setRoomNumber('');
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'Failed to assign item.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="h-full rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50 transition-shadow hover:shadow-md hover:shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 dark:hover:shadow-black/40">
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+          🙋 Assign to guest
+        </h2>
+        <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">
+          Scan an already-registered tag to attach (or change) a guest and room.
+        </p>
+      </div>
+
+      {!roleLoading && !isStaff && <ViewerNotice />}
+
+      <div className="mb-3 flex gap-2">
+        <input
+          value={manualTagId}
+          onChange={(e) => setManualTagId(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
+          placeholder="Scan or type Tag ID"
+          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-teal-500/20"
+        />
+        <button
+          onClick={handleLookup}
+          disabled={looking || !isStaff}
+          title={!isStaff ? 'Staff access required' : undefined}
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-900 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-700 dark:hover:bg-slate-600"
+        >
+          {looking ? 'Looking…' : 'Look up'}
+        </button>
+      </div>
+
+      {notFoundTagId && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          Tag <span className="font-mono">{notFoundTagId}</span> isn&apos;t registered yet -
+          register it in Register items first.
+        </p>
+      )}
+
+      {found ? (
+        <div className="animate-fade-in-up rounded-xl border border-teal-200/70 bg-teal-50/60 p-4 dark:border-teal-500/20 dark:bg-teal-500/[0.07]">
+          <p className="mb-3 text-sm text-teal-800 dark:text-teal-300">
+            <span className="font-mono">{found.tagId}</span> · {found.itemType} · currently{' '}
+            <span className="font-medium">{found.status}</span>
+            {found.customerName && ` · ${found.customerName}`}
+          </p>
+          <div className="mb-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Customer name
+              </label>
+              <input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-teal-500/20"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Room number
+              </label>
+              <input
+                value={roomNumber}
+                onChange={(e) => setRoomNumber(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-teal-500/20"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleAssign}
+            disabled={saving || !isStaff}
+            title={!isStaff ? 'Staff access required' : undefined}
+            className="w-full rounded-lg bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-600/30 transition-all hover:shadow-lg hover:shadow-teal-600/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+          >
+            {saving ? 'Assigning…' : 'Assign'}
+          </button>
+        </div>
+      ) : (
+        !notFoundTagId && (
+          <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 px-5 py-10 text-sm text-slate-400 dark:border-slate-800 dark:text-slate-500">
+            Scan a tag to assign it.
+          </div>
+        )
+      )}
 
       {status && <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">{status}</p>}
     </section>

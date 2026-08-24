@@ -41,6 +41,7 @@ export default function ScanScreen() {
           </View>
 
           <RegisterSection />
+          <AssignToGuestSection />
           <ExitScannerSection />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -194,37 +195,48 @@ function RegisterSection() {
     setPending((current) => current.filter((p) => p.tagId !== tagId));
   }
 
-  async function handleAssign() {
+  async function handleSave() {
     if (pending.length === 0) {
       setStatus('Scan at least one item first.');
       return;
     }
-    if (!customerName.trim() || !roomNumber.trim()) {
-      setStatus('Fill in Customer Name and Room Number.');
-      return;
-    }
+
+    // Customer/room are optional - leave them blank to register tags
+    // as unassigned stock, sorted into categories by Item Type alone
+    // (status 'Storage', matching what that status already means:
+    // "not currently with any customer"). Fill them in to assign a
+    // guest right away instead. Either way, the Assign to Guest
+    // section below can attach a guest to stock registered without
+    // one, or move an item to a different guest later.
+    const trimmedCustomer = customerName.trim();
+    const trimmedRoom = roomNumber.trim();
+    const assigningNow = trimmedCustomer !== '' || trimmedRoom !== '';
 
     setSaving(true);
     try {
       for (const item of pending) {
         const linenItem: LinenItem = {
           tagId: item.tagId,
-          customerName: customerName.trim(),
-          roomNumber: roomNumber.trim(),
+          customerName: trimmedCustomer,
+          roomNumber: trimmedRoom,
           itemType: item.itemType,
-          status: 'In Use',
+          status: assigningNow ? 'In Use' : 'Storage',
         };
         await saveLinenItem(linenItem);
         logItemEvent({
           tagId: linenItem.tagId,
           eventType: 'registered',
           newStatus: linenItem.status,
-          customerName: linenItem.customerName,
-          roomNumber: linenItem.roomNumber,
+          customerName: linenItem.customerName || null,
+          roomNumber: linenItem.roomNumber || null,
           detail: linenItem.itemType,
         }).catch((err) => console.warn('Failed to log audit event:', err));
       }
-      setStatus(`Assigned ${pending.length} item(s) to ${customerName.trim()}.`);
+      setStatus(
+        assigningNow
+          ? `Registered and assigned ${pending.length} item(s) to ${trimmedCustomer}.`
+          : `Registered ${pending.length} item(s) as unassigned stock.`
+      );
       setPending([]);
       setCustomerName('');
       setRoomNumber('');
@@ -238,7 +250,7 @@ function RegisterSection() {
   return (
     <SectionCard
       title="Register items"
-      subtitle="Scan a tag, then assign a guest and room."
+      subtitle='Scan tags into a category. Guest and room are optional - assign them now, or later in "Assign to guest".'
       headerRight={
         <ReaderModeSwitch
           mode={reader.mode}
@@ -310,29 +322,194 @@ function RegisterSection() {
 
       <TextInput
         style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-        placeholder="Customer name"
+        placeholder="Customer name (optional)"
         placeholderTextColor={colors.textSecondary}
         value={customerName}
         onChangeText={setCustomerName}
       />
       <TextInput
         style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-        placeholder="Room number"
+        placeholder="Room number (optional)"
         placeholderTextColor={colors.textSecondary}
         value={roomNumber}
         onChangeText={setRoomNumber}
       />
 
       <PressableScale
-        onPress={handleAssign}
+        onPress={handleSave}
         disabled={saving}
         style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving ? 0.6 : 1 }]}>
         {saving ? (
           <ActivityIndicator color={colors.background} />
         ) : (
-          <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Assign</ThemedText>
+          <ThemedText style={{ color: colors.background, fontWeight: '700' }}>
+            {pending.length > 0 && (customerName.trim() || roomNumber.trim()) ? 'Save & assign' : 'Save'}
+          </ThemedText>
         )}
       </PressableScale>
+
+      {status && <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>{status}</ThemedText>}
+    </SectionCard>
+  );
+}
+
+/**
+ * The other half of Register items' optional-guest flow: scan a tag
+ * that's already registered (whether it was left unassigned on
+ * purpose, or is being handed to a different guest than before) and
+ * attach a Customer Name + Room Number to it. Doesn't touch Item
+ * Type - that was already decided at registration.
+ */
+function AssignToGuestSection() {
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
+
+  const [manualTagId, setManualTagId] = useState('');
+  const [looking, setLooking] = useState(false);
+  const [found, setFound] = useState<LinenItem | null>(null);
+  const [notFoundTagId, setNotFoundTagId] = useState<string | null>(null);
+  const [customerName, setCustomerName] = useState('');
+  const [roomNumber, setRoomNumber] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  async function handleLookup() {
+    const tagId = manualTagId.trim().toUpperCase();
+    if (!tagId) return;
+
+    setLooking(true);
+    setStatus(null);
+    setNotFoundTagId(null);
+    try {
+      const item = await getItemByTag(tagId);
+      if (!item) {
+        setFound(null);
+        setNotFoundTagId(tagId);
+      } else {
+        setFound(item);
+        setCustomerName(item.customerName);
+        setRoomNumber(item.roomNumber);
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'Failed to look up tag.');
+    } finally {
+      setLooking(false);
+      setManualTagId('');
+    }
+  }
+
+  async function handleAssign() {
+    if (!found) return;
+    if (!customerName.trim() || !roomNumber.trim()) {
+      setStatus('Fill in Customer Name and Room Number.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated: LinenItem = {
+        ...found,
+        customerName: customerName.trim(),
+        roomNumber: roomNumber.trim(),
+        status: 'In Use',
+      };
+      await saveLinenItem(updated);
+      logItemEvent({
+        tagId: updated.tagId,
+        eventType: 'status_changed',
+        oldStatus: found.status,
+        newStatus: 'In Use',
+        customerName: updated.customerName,
+        roomNumber: updated.roomNumber,
+        detail: updated.itemType,
+      }).catch((err) => console.warn('Failed to log audit event:', err));
+      setStatus(`Assigned ${updated.tagId} to ${updated.customerName}.`);
+      setFound(null);
+      setCustomerName('');
+      setRoomNumber('');
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'Failed to assign item.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard title="🙋 Assign to guest" subtitle="Scan an already-registered tag to attach (or change) a guest and room.">
+      <View style={styles.exitRow}>
+        <TextInput
+          style={[
+            styles.input,
+            styles.exitInput,
+            { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+          ]}
+          placeholder="Scan or type Tag ID"
+          placeholderTextColor={colors.textSecondary}
+          autoCapitalize="characters"
+          value={manualTagId}
+          onChangeText={setManualTagId}
+          onSubmitEditing={handleLookup}
+          returnKeyType="done"
+        />
+        <PressableScale
+          onPress={handleLookup}
+          disabled={looking}
+          style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: looking ? 0.6 : 1 }]}>
+          <ThemedText style={{ color: colors.background, fontWeight: '700' }}>
+            {looking ? 'Looking…' : 'Look up'}
+          </ThemedText>
+        </PressableScale>
+      </View>
+
+      {notFoundTagId && (
+        <ThemedText style={{ color: colors.danger, fontSize: 13 }}>
+          {notFoundTagId} isn&apos;t registered yet - register it above first.
+        </ThemedText>
+      )}
+
+      {found ? (
+        <View
+          style={[
+            styles.resultBanner,
+            { backgroundColor: `${colors.statusInUse}18`, borderColor: colors.statusInUse },
+          ]}>
+          <ThemedText style={{ color: colors.text, fontSize: 13, marginBottom: 10 }}>
+            <ThemedText style={{ fontFamily: 'monospace', fontSize: 13 }}>{found.tagId}</ThemedText>
+            {` · ${found.itemType} · currently ${found.status}`}
+            {found.customerName ? ` · ${found.customerName}` : ''}
+          </ThemedText>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, marginBottom: 8 }]}
+            placeholder="Customer name"
+            placeholderTextColor={colors.textSecondary}
+            value={customerName}
+            onChangeText={setCustomerName}
+          />
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text, marginBottom: 10 }]}
+            placeholder="Room number"
+            placeholderTextColor={colors.textSecondary}
+            value={roomNumber}
+            onChangeText={setRoomNumber}
+          />
+          <PressableScale
+            onPress={handleAssign}
+            disabled={saving}
+            style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving ? 0.6 : 1 }]}>
+            {saving ? (
+              <ActivityIndicator color={colors.background} />
+            ) : (
+              <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Assign</ThemedText>
+            )}
+          </PressableScale>
+        </View>
+      ) : (
+        !notFoundTagId && (
+          <ThemedText style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', padding: 14 }}>
+            Scan a tag to assign it.
+          </ThemedText>
+        )
+      )}
 
       {status && <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>{status}</ThemedText>}
     </SectionCard>

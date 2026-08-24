@@ -203,6 +203,20 @@ export async function saveLinenItem(item: LinenItem): Promise<void> {
 }
 
 /**
+ * Delete a linen item by its tag ID - mirrors the desktop app's
+ * database.delete_linen_item(). Used by the Inventory page's bulk
+ * delete (see app/inventory/page.tsx); the desktop app is still the
+ * only place with a single-item delete UI.
+ */
+export async function deleteLinenItem(tagId: string): Promise<void> {
+  const { error } = await supabase.from('linen_items').delete().eq('tag_id', tagId);
+
+  if (error) {
+    throw friendlyWriteError('delete item', error);
+  }
+}
+
+/**
  * Record a theft alert - mirrors the desktop app's
  * database.log_theft_alert(). Called by the exit scanner when a
  * scanned tag is flagged (see lib/detector.ts).

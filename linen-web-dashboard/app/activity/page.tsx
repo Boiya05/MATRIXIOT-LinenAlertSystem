@@ -37,13 +37,19 @@ const SOURCE_LABELS: Record<ItemEvent['sourceApp'], string> = {
 function describe(event: ItemEvent): string {
   switch (event.eventType) {
     case 'registered':
-      return `Assigned to ${event.customerName ?? 'unknown'} · Room ${event.roomNumber ?? 'unknown'}`;
+      return event.customerName
+        ? `Assigned to ${event.customerName} · Room ${event.roomNumber ?? 'unknown'}`
+        : 'Registered as unassigned stock';
     case 'status_changed':
-      return `${event.oldStatus ?? '?'} → ${event.newStatus ?? '?'}`;
+      return event.customerName
+        ? `${event.oldStatus ?? '?'} → ${event.newStatus ?? '?'} · assigned to ${event.customerName} · Room ${event.roomNumber ?? '?'}`
+        : `${event.oldStatus ?? '?'} → ${event.newStatus ?? '?'}`;
     case 'edited':
       return event.detail ?? 'Details updated';
     case 'deleted':
-      return `Was ${event.oldStatus ?? 'unknown'} · ${event.customerName ?? 'unknown'} · Room ${event.roomNumber ?? 'unknown'}`;
+      return event.customerName
+        ? `Was ${event.oldStatus ?? 'unknown'} · ${event.customerName} · Room ${event.roomNumber ?? 'unknown'}`
+        : `Was ${event.oldStatus ?? 'unknown'} · unassigned stock`;
     case 'alert_triggered':
       return `Marked ${event.oldStatus ?? 'unregistered'} at the exit scanner`;
     case 'alert_dismissed':

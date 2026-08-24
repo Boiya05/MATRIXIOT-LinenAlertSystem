@@ -80,9 +80,10 @@ deleting, triggering an alert) in the `linen_item_events` audit trail
 app's README ("Audit trail (who did what, and when)") for the full
 setup and what gets logged where.
 
-**Registering items (scan + batch assign):**
+**Registering items (scan + batch save):**
 - Pick an **Item Type** first - a real UHF tag only carries an ID, not
-  what the item actually is, so this is what tells the app that.
+  what the item actually is, so this is what tells the app that (and
+  is the only thing sorting a tag into a category actually requires).
 - Use the **Scan / type Tag ID** field for an actual USB RFID reader -
   the "keyboard wedge" kind that just types the tag ID and presses
   Enter, no COM port or configuration needed (this is the first reader
@@ -94,16 +95,29 @@ setup and what gets logged where.
   read. No reader on hand? Type a Tag ID by hand and press Enter -
   same field, same result.
 - Scan as many items as you like - they all wait in the pending list.
-- Type a **Customer Name** and **Room Number**, then click **Assign** to
-  apply those details to *every* pending item at once and save them all
-  to the database. The pending list clears and the items show up in the
-  **Saved Items** table at the bottom, with a status of **In Use**.
+- **Customer Name** and **Room Number** are optional. Click **Save**
+  with them blank to register the pending tags as unassigned stock -
+  sorted into a category by Item Type alone, status **Storage** - and
+  attach a guest to them later. Fill them in first to also assign a
+  guest in this same step, same as this always used to work; either
+  way the pending list clears and the items show up in the **Saved
+  Items** table.
+
+**Assign to Guest (already-registered tags):** a separate section for
+attaching a Customer Name + Room Number to a tag that's already in the
+database - either stock that was registered without one above, or an
+item being handed to a different guest than before. Scan or type the
+Tag ID, fill in Customer Name + Room Number, click **Assign to
+Guest** (or press Enter in the Tag ID field). Flips the item's status
+to **In Use**. If the tag isn't registered yet, this tells you instead
+of guessing - register it above first.
 
 **Item status:**
 - Every saved item has a status shown in the Saved Items table:
-  - **In Use** - currently with a customer (the default when assigned)
+  - **In Use** - currently with a customer
   - **Laundry** - picked up and currently being washed
-  - **Storage** - stored, not currently with any customer
+  - **Storage** - stored, not currently with any customer (also what
+    a newly-registered, not-yet-assigned tag starts as)
 - Select a row and click **Mark In Use** / **Mark Laundry** / **Mark
   Storage** to switch its status.
 
