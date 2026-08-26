@@ -37,14 +37,15 @@ from models import STATUS_IN_USE, STATUS_LAUNDRY, STATUS_STORAGE, LinenItem
 # dropdown and _handle_entry_scan() below.
 ITEM_TYPES = ["Bath Towel", "Hand Towel", "Washcloth", "Bedsheet", "Pillowcase", "Blanket"]
 
-# How long to ignore repeat reads of the same tag at the exit scanner
-# after processing one. A real UHF reader reports a tag many times a
-# second for as long as it's in range, not once - without this, one
-# physical tag walking past the exit would pop the theft alert, send
-# Telegram/WhatsApp messages, and log a theft_alerts row over and over
-# for the same event instead of just once. Mirrors RESCAN_COOLDOWN_MS
-# in the mobile app's and web dashboard's scan pages (same 5 seconds).
-EXIT_RESCAN_COOLDOWN_SECONDS = 5.0
+# How long to ignore repeat reads of the same tag, at either
+# checkpoint, after processing one. A real UHF reader reports a tag
+# many times a second for as long as it's in range, not once - without
+# this, one physical tag would pop the exit-scanner alarm (or spam the
+# "already registered"/"already pending" message on the entry side)
+# over and over for the same event instead of just once. Mirrors
+# RESCAN_COOLDOWN_MS in the mobile app's and web dashboard's scan pages
+# (same 5 seconds).
+RESCAN_COOLDOWN_SECONDS = 5.0
 
 
 class LinenApp:
@@ -67,9 +68,13 @@ class LinenApp:
         self.assign_pending_items = []
 
         # tag_id -> time.monotonic() of the last time it was processed
-        # at the exit scanner - see _handle_exit_scan()'s cooldown
-        # check and EXIT_RESCAN_COOLDOWN_SECONDS above.
+        # at each checkpoint - see _handle_exit_scan()'s and
+        # _handle_entry_scan()'s cooldown checks, and
+        # RESCAN_COOLDOWN_SECONDS above. Separate dicts because the two
+        # checkpoints are independent - the same tag passing through
+        # both should still be handled at each.
         self._exit_last_seen = {}
+        self._entry_last_seen = {}
 
         # RFID hardware - see hardware/ for the abstraction layer.
         # Each role defaults to a SimulatedReader unless
@@ -412,20 +417,44 @@ class LinenApp:
         type Tag ID" field (a real keyboard-wedge reader, or someone
         typing by hand). Adds the tag to the pending list (with
         whatever Item Type is currently selected in the dropdown),
-        waiting to be assigned to a customer and room.
+        waiting to be assigned to a customer and room - unless it's
+        already registered, or already sitting in this pending list.
 
         A real reader keeps reading the same tag over and over for as
         long as it's in range (many times a second) rather than
-        reading it once - without this check, one physical scan would
-        add the same tag to the pending list dozens of times. Once the
-        tag is assigned (or removed from pending), it's no longer
-        "already pending", so scanning it again later works normally -
-        this only blocks re-adding it while it's still sitting in the
-        current batch.
+        reading it once - the cooldown check below stops that from
+        spamming a database lookup (and, if rejected, the status
+        message) once per read instead of once per actual scan event.
         """
+        now = time.monotonic()
+        last_seen = self._entry_last_seen.get(tag_id)
+        if last_seen is not None and now - last_seen < RESCAN_COOLDOWN_SECONDS:
+            return  # same tag, still within the cooldown window - ignore
+        self._entry_last_seen[tag_id] = now
+
+        # Once the tag is assigned (or removed from pending), it's no
+        # longer "already pending", so scanning it again later works
+        # normally - this only blocks re-adding it while it's still
+        # sitting in the current batch.
         already_pending = any(pending_tag == tag_id for pending_tag, _ in self.pending_items)
         if already_pending:
             self.status_label.config(text=f"{tag_id} is already in the pending list - ignored repeat scan.")
+            return
+
+        # A tag that's already registered in the database would
+        # silently overwrite that existing row (upsert-on-tag_id) if
+        # registered again here - the same physical tag can't belong
+        # to two different registrations at once. "Assign to Guest"
+        # (or "Edit Selected" on desktop) is the right place to change
+        # an existing item's details instead.
+        existing_item = database.get_item_by_tag(tag_id)
+        if existing_item is not None:
+            self.status_label.config(
+                text=(
+                    f"{tag_id} is already registered ({existing_item.status}) - "
+                    "use Assign to Guest to change it instead of re-registering."
+                )
+            )
             return
 
         item_type = self.item_type_combo.get()
@@ -671,11 +700,11 @@ class LinenApp:
         cooldown, one tag walking past the exit would trigger the
         alarm (pop-up, Telegram, WhatsApp, a theft_alerts row) once per
         read instead of once per actual event. See
-        EXIT_RESCAN_COOLDOWN_SECONDS above.
+        RESCAN_COOLDOWN_SECONDS above.
         """
         now = time.monotonic()
         last_seen = self._exit_last_seen.get(tag_id)
-        if last_seen is not None and now - last_seen < EXIT_RESCAN_COOLDOWN_SECONDS:
+        if last_seen is not None and now - last_seen < RESCAN_COOLDOWN_SECONDS:
             return  # same tag, still within the cooldown window - ignore
         self._exit_last_seen[tag_id] = now
 

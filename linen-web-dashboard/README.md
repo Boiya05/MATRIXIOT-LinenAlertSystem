@@ -26,7 +26,10 @@ the one running the Python app.
   any device remove them) with a dismiss button.
 - **Scan** (`/scan`) — three independent sections: **Register items**
   (scan tags into a category - guest/room are optional, leave them
-  blank to save as unassigned stock), **Assign to guest** (scan any
+  blank to save as unassigned stock; a tag that's already registered
+  can't be scanned into a new registration, since that would silently
+  overwrite its existing data - use **Assign to guest** for it
+  instead), **Assign to guest** (scan any
   number of already-registered tags, then attach or change one
   guest/room for all of them at once), and **Exit scanner** (the theft
   check). The two entry-side sections default to **Simulated** mode -

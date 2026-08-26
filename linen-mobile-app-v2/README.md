@@ -89,6 +89,10 @@ between **Simulated** and **USB reader** mode where relevant:
   category (Item Type). Customer Name + Room Number are optional -
   leave them blank to save the tags as unassigned stock (status
   Storage), or fill them in to also assign a guest in this same step.
+  A tag that's already registered can't be scanned into a new
+  registration - it would silently overwrite its existing data - so
+  scanning one just shows its current status instead; use **Assign to
+  guest** for it instead.
 - **Assign to guest** - the other half of that: scan any number of
   already-registered tags, then attach (or change) one Customer Name +
   Room Number for all of them at once, flipping each one's status to

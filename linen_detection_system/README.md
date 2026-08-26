@@ -94,6 +94,13 @@ setup and what gets logged where.
   only gets added to the pending list the first time, not once per
   read. No reader on hand? Type a Tag ID by hand and press Enter -
   same field, same result.
+- **A tag that's already registered can't be registered again** -
+  scanning one shows its current status in the status line instead of
+  adding it to the pending list. Re-registering it would silently
+  overwrite its existing customer/room/status (saving is an upsert
+  keyed by Tag ID), so the same physical tag can't end up belonging to
+  two different registrations. Use **Assign to Guest** or **Edit
+  Selected** to change an already-registered item instead.
 - Scan as many items as you like - they all wait in the pending list.
 - **Customer Name** and **Room Number** are optional. Click **Save**
   with them blank to register the pending tags as unassigned stock -

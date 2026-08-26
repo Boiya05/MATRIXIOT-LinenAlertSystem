@@ -33,6 +33,15 @@ function ViewerNotice() {
 // rather than it being guessed or looked up automatically.
 const ITEM_TYPES = ['Bath Towel', 'Hand Towel', 'Washcloth', 'Bedsheet', 'Pillowcase', 'Blanket'];
 
+// How long to ignore repeat reads of the same tag after processing it
+// once, at either checkpoint below. A real UHF reader in continuous-
+// inventory mode reports the same tag many times a second while it's
+// in range - without this, one physical scan would re-check/re-log
+// the same tag over and over (dozens of duplicate exit alerts, or
+// repeated "already registered" lookups on the entry side) instead of
+// being handled once per actual event.
+const RESCAN_COOLDOWN_MS = 5000;
+
 export default function ScanPage() {
   return (
     <Protected>
@@ -119,20 +128,52 @@ function RegisterSection() {
   const [roomNumber, setRoomNumber] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const lastSeenRef = useRef<Map<string, number>>(new Map());
 
-  // Depends on selectedItemType so a fresh closure (carrying the
-  // currently-picked type) reaches useReader's poll loop every time
-  // the selection changes - see hooks/use-reader.ts's onTagRef, which
-  // is refreshed every render specifically so this works.
+  // Depends on selectedItemType and pending so a fresh closure
+  // (carrying the currently-picked type and the current batch)
+  // reaches useReader's poll loop every time either changes - see
+  // hooks/use-reader.ts's onTagRef, which is refreshed every render
+  // specifically so this works.
   const handleTag = useCallback(
-    (tagId: string) => {
+    async (tagId: string) => {
+      const now = Date.now();
+      const lastSeen = lastSeenRef.current.get(tagId);
+      if (lastSeen && now - lastSeen < RESCAN_COOLDOWN_MS) {
+        return; // same tag, still within the cooldown window - ignore
+      }
+      lastSeenRef.current.set(tagId, now);
+
+      if (pending.some((p) => p.tagId === tagId)) {
+        setStatus(`${tagId} is already in the pending list - ignored repeat scan.`);
+        return;
+      }
+
+      // A tag that's already registered would silently overwrite that
+      // existing row (saveLinenItem is an upsert-on-tagId) if
+      // registered again here - the same physical tag can't belong to
+      // two different registrations at once. "Assign to guest" is the
+      // right place to change an existing item's guest/room instead.
+      try {
+        const existing = await getItemByTag(tagId);
+        if (existing) {
+          setStatus(
+            `${tagId} is already registered (${existing.status}) - use "Assign to guest" to change it instead of re-registering.`
+          );
+          return;
+        }
+      } catch (err) {
+        setStatus(err instanceof Error ? err.message : 'Failed to check tag.');
+        return;
+      }
+
       setPending((current) => {
-        if (current.some((p) => p.tagId === tagId)) return current; // ignore duplicate reads of the same tag
+        if (current.some((p) => p.tagId === tagId)) return current; // lost the race with another read - ignore
         return [...current, { tagId, itemType: selectedItemType }];
       });
       setStatus(`Scanned ${tagId}. Added to pending list.`);
     },
-    [selectedItemType]
+    [selectedItemType, pending]
   );
 
   const reader = useReader('entry_reader', handleTag);
@@ -533,16 +574,6 @@ function AssignToGuestSection() {
 }
 
 type ScanResult = { tagId: string; flagged: boolean; item: LinenItem | null };
-
-// How long to ignore repeat reads of the same tag after processing
-// it once. A real UHF reader in continuous-inventory mode reports the
-// same tag many times a second while it's in range - without this,
-// one item passing the exit would log dozens of duplicate alerts
-// instead of one. This is the dedup/debounce step flagged as a known
-// gap for the desktop app's serial reader too (see its README) -
-// implemented here since Web Serial mode makes it immediately
-// relevant, rather than left as a placeholder.
-const RESCAN_COOLDOWN_MS = 5000;
 
 function ExitScannerSection() {
   const { isStaff, roleLoading } = useAuth();
