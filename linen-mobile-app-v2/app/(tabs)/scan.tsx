@@ -17,6 +17,7 @@ import { getItemByTag, hasActiveAlert, logItemEvent, logTheftAlert, saveLinenIte
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { checkTag } from '@/lib/detector';
+import { sendTelegramAlert } from '@/lib/telegram-alert';
 
 // The kinds of linen items this app tracks - mirrors the desktop
 // app's ITEM_TYPES exactly. A real UHF tag only carries a Tag ID (its
@@ -627,6 +628,10 @@ function ExitScannerSection() {
             roomNumber: item.roomNumber,
             detail: item.itemType,
           }).catch((err) => console.warn('Failed to log audit event:', err));
+          // Best-effort, like every other notification/audit call here -
+          // a failed Telegram send shouldn't block the alert itself,
+          // which is already recorded above regardless of this outcome.
+          sendTelegramAlert(tagId, item).catch((err) => console.warn('Failed to send Telegram alert:', err));
         }
       }
 

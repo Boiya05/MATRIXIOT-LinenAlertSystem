@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { getItemByTag, hasActiveAlert, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { checkTag } from '@/lib/detector';
+import { sendTelegramAlert } from '@/lib/telegram-alert';
 
 /**
  * Shown at the top of a Scan section for a signed-in `viewer` account
@@ -622,6 +623,10 @@ function ExitScannerSection() {
             roomNumber: item.roomNumber,
             detail: item.itemType,
           }).catch((err) => console.warn('Failed to log audit event:', err));
+          // Best-effort, like every other notification/audit call here -
+          // a failed Telegram send shouldn't block the alert itself,
+          // which is already recorded above regardless of this outcome.
+          sendTelegramAlert(tagId, item).catch((err) => console.warn('Failed to send Telegram alert:', err));
         }
       }
 

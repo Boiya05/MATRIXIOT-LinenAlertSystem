@@ -134,7 +134,17 @@ Opens at `http://localhost:3000`. Log in with a Supabase Auth account
    folders, so Vercel needs to know to build from this subfolder).
 3. Add the two environment variables from `.env.example` (with your
    real values) under **Settings → Environment Variables**.
-4. Deploy. Vercel builds and hosts it automatically on every push to
+4. Optionally, also add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+   (the same values as the desktop app's `telegram_config.json`) under
+   the same **Environment Variables** page - these power the Telegram
+   relay described in **Telegram alerts** above. They're deliberately
+   left out of `.env.example`/`NEXT_PUBLIC_*`: unlike the Supabase
+   key, this is a real secret that must never reach the browser
+   bundle, so it's only ever read server-side, inside
+   `app/api/telegram-alert/route.ts`. Leave them unset and this
+   dashboard (and the mobile app, which relays through it) simply
+   won't send Telegram alerts - everything else still works.
+5. Deploy. Vercel builds and hosts it automatically on every push to
    the connected branch from then on.
 
 Alternatively, from this folder:
@@ -200,14 +210,46 @@ Dismissing the existing alert - from this dashboard, the mobile app,
 or the desktop app - is what lets the next flagged scan raise a new
 one; `theft_alerts` is shared across all three.
 
+## Telegram alerts
+
+The desktop app sends a Telegram message straight from Python, using
+credentials in its own local `telegram_config.json` (see its README).
+Neither this dashboard nor the mobile app can do that safely - a
+browser tab or an app bundle has no equivalent private place to keep a
+bot token; anyone could pull it out of dev tools or the APK and use it
+to message the same chat. So instead, both call a small server-side
+route on this dashboard - `app/api/telegram-alert/route.ts` - which
+holds the real credentials (as `TELEGRAM_BOT_TOKEN` /
+`TELEGRAM_CHAT_ID` in Vercel's **Settings → Environment Variables**,
+never in `.env.example` or any committed file) and sends the message
+on their behalf.
+
+That route requires a valid Supabase session (checked server-side via
+`supabase.auth.getUser()`) before it'll send anything - the same "must
+be logged in" boundary that already gates every write to
+`theft_alerts` through Row Level Security, reused here instead of
+inventing a separate secret to manage. `lib/telegram-alert.ts` is what
+this dashboard's own exit scanner calls; the mobile app has its own
+copy pointed at this dashboard's deployed URL (see the mobile app's
+README).
+
+If `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` aren't set in this
+deployment's environment, the route just returns "not configured"
+instead of erroring - same best-effort philosophy as the desktop app's
+`alarm.py`: a missing or failed Telegram send should never block the
+on-screen alert, the `theft_alerts` row, or the audit log entry that
+already happened by the time this is called.
+
 ## Current status
 
 Working: login, live dashboard stats, live theft alerts with dismiss,
 searchable/filterable inventory with bulk delete, alert history, the
 audit trail (Activity), and item registration (optional guest/room,
 real USB hardware via a manual field or Web Serial) + a separate
-Assign to guest step + exit-scan theft detection - all reading and
-writing the same Supabase project as the desktop and mobile apps,
+Assign to guest step + exit-scan theft detection (which now also
+relays a Telegram alert, the same as the desktop app - see **Telegram
+alerts** above) - all reading and writing the same Supabase project as
+the desktop and mobile apps,
 protected by the same Row Level Security policies. Verified against
 live data before being committed: a full register → assign → exit-scan
 → theft-alert-logged pass through the real UI, using a throwaway test

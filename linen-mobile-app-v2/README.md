@@ -105,7 +105,9 @@ between **Simulated** and **USB reader** mode where relevant:
   many times a second; beyond that, a tag with an alert already active
   doesn't raise a second one at all (`hasActiveAlert()`) - dismissing
   the existing one (from any of the three apps) is what lets the next
-  flagged scan raise a new one.
+  flagged scan raise a new one. A new alert also sends a Telegram
+  message, same as the desktop app - see **Telegram alerts** below for
+  how, since this app can't hold the bot token itself.
 
 A USB "keyboard wedge" reader (types the tag ID and presses Enter, no
 special driver needed) already works today through Simulated mode's
@@ -410,6 +412,29 @@ the 200 most recent events, searchable by tag/guest/room/actor, live
 via Realtime. Mobile and desktop don't have their own viewer for
 it - the web dashboard is already the "management reviews things from
 a browser" app, so that's where this lives.
+
+## Telegram alerts
+
+The desktop app sends a Telegram message straight from Python, using
+credentials in its own local `telegram_config.json`. This app can't do
+that safely - anything bundled into the APK/IPA is extractable, so
+there's nowhere on-device to keep a bot token that a browser tab or
+app bundle inspection couldn't pull out. Instead, `lib/telegram-alert.ts`
+calls a small server-side route on the **web dashboard**
+(`app/api/telegram-alert`), which holds the real credentials and sends
+the message on this app's behalf - see the web dashboard's README
+("Telegram alerts") for exactly how that route works and how it's
+secured.
+
+`EXPO_PUBLIC_NOTIFY_API_URL` in `.env` is the dashboard's base URL -
+defaults to its production deployment if left unset, so most setups
+need nothing added here at all; override it only if you're pointing at
+a different deployment (a preview URL, or `localhost` during
+dashboard development). This call is best-effort like everything else
+in the alert flow: if it fails (dashboard down, no signed-in session,
+Telegram not configured on that deployment), the on-screen result,
+the `theft_alerts` row, and the audit log entry all already happened
+regardless - only the Telegram message itself is skipped.
 
 ## Status constraint
 
