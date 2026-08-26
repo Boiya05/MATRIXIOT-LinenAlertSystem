@@ -402,6 +402,35 @@ via Realtime. Mobile and desktop don't have their own viewer for
 it - the web dashboard is already the "management reviews things from
 a browser" app, so that's where this lives.
 
+## Status constraint
+
+`linen_items.status` was free text with nothing stopping a typo, a
+bug, or a direct write from putting something other than `In Use`,
+`Laundry`, or `Storage` in it - and the exit-scanner rule
+(`detector.py`/`lib/detector.ts`) now alarms on anything that *isn't*
+one of those three (see their own comments for why that's the safer
+direction to fail), so a bad value there would trip the theft alert on
+every scan, not silently disable it. Either way, bad data shouldn't be
+possible to write in the first place. Run this once in the Supabase
+SQL Editor:
+
+```sql
+alter table linen_items
+  add constraint linen_items_status_check
+  check (status in ('In Use', 'Laundry', 'Storage'));
+```
+
+**If this fails** (`check constraint ... is violated by some row`),
+something already in the table has a bad status value - find it first:
+
+```sql
+select tag_id, status from linen_items
+where status not in ('In Use', 'Laundry', 'Storage');
+```
+
+Fix or delete those rows (an `update`/`delete` by `tag_id`), then run
+the `alter table` again.
+
 ## Password reset setup
 
 **One required step in the Supabase dashboard** - without it, the

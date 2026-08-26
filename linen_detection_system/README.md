@@ -124,8 +124,9 @@ yet tells you instead of guessing - register it above first.
   Storage** to switch its status.
 
 **Exit scanner (theft detection):**
-- Type a Tag ID into the **Exit Scanner** box and press Enter (or click
-  **Simulate Exit Scan**) to simulate that tag passing the exit reader.
+- Type or scan a Tag ID into the **Exit Scanner** box and press Enter
+  (or click **Simulate Exit Scan**) - same real-reader-or-typed-by-hand
+  field as the entry side.
 - `detector.py`'s rule: a scan is flagged as a possible theft if the tag
   isn't registered at all, or if the matching item's status is **In
   Use**. Items marked **Laundry** or **Storage** pass through without an
@@ -134,6 +135,10 @@ yet tells you instead of guessing - register it above first.
 - A flagged scan triggers `alarm.py`:
   - An on-screen "⚠ THEFT ALERT ⚠" pop-up with the item's details
   - A matching WhatsApp message sent to your phone via Twilio
+- A real reader reads the same tag many times a second for as long as
+  it's in range - a 5-second cooldown per tag
+  (`EXIT_RESCAN_COOLDOWN_SECONDS` in `main.py`) means one tag walking
+  past only triggers the alarm once, not once per read.
 
 Close the window to exit the program.
 

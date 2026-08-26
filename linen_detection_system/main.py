@@ -20,6 +20,7 @@ over a real serial port instead - see hardware/serial_reader.py for
 what's still a placeholder there.
 """
 
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -35,6 +36,15 @@ from models import STATUS_IN_USE, STATUS_LAUNDRY, STATUS_STORAGE, LinenItem
 # pick the type from this list at scan time - see the Item Type
 # dropdown and _handle_entry_scan() below.
 ITEM_TYPES = ["Bath Towel", "Hand Towel", "Washcloth", "Bedsheet", "Pillowcase", "Blanket"]
+
+# How long to ignore repeat reads of the same tag at the exit scanner
+# after processing one. A real UHF reader reports a tag many times a
+# second for as long as it's in range, not once - without this, one
+# physical tag walking past the exit would pop the theft alert, send
+# Telegram/WhatsApp messages, and log a theft_alerts row over and over
+# for the same event instead of just once. Mirrors RESCAN_COOLDOWN_MS
+# in the mobile app's and web dashboard's scan pages (same 5 seconds).
+EXIT_RESCAN_COOLDOWN_SECONDS = 5.0
 
 
 class LinenApp:
@@ -55,6 +65,11 @@ class LinenApp:
         # of them at once. Each entry is a full LinenItem (fetched
         # from the database, not just a tag/type pair).
         self.assign_pending_items = []
+
+        # tag_id -> time.monotonic() of the last time it was processed
+        # at the exit scanner - see _handle_exit_scan()'s cooldown
+        # check and EXIT_RESCAN_COOLDOWN_SECONDS above.
+        self._exit_last_seen = {}
 
         # RFID hardware - see hardware/ for the abstraction layer.
         # Each role defaults to a SimulatedReader unless
@@ -650,7 +665,20 @@ class LinenApp:
         tag detected here is treated as leaving the building, so it's
         run through detector.py and, if flagged, alarm.py shows a
         pop-up warning.
+
+        A real reader keeps reading the same tag many times a second
+        for as long as it's in range, not just once - without a
+        cooldown, one tag walking past the exit would trigger the
+        alarm (pop-up, Telegram, WhatsApp, a theft_alerts row) once per
+        read instead of once per actual event. See
+        EXIT_RESCAN_COOLDOWN_SECONDS above.
         """
+        now = time.monotonic()
+        last_seen = self._exit_last_seen.get(tag_id)
+        if last_seen is not None and now - last_seen < EXIT_RESCAN_COOLDOWN_SECONDS:
+            return  # same tag, still within the cooldown window - ignore
+        self._exit_last_seen[tag_id] = now
+
         item = database.get_item_by_tag(tag_id)
 
         if detector.check_tag(tag_id, item):
