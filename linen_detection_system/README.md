@@ -127,11 +127,13 @@ yet tells you instead of guessing - register it above first.
 - Type or scan a Tag ID into the **Exit Scanner** box and press Enter
   (or click **Simulate Exit Scan**) - same real-reader-or-typed-by-hand
   field as the entry side.
-- `detector.py`'s rule: a scan is flagged as a possible theft if the tag
-  isn't registered at all, or if the matching item's status is **In
-  Use**. Items marked **Laundry** or **Storage** pass through without an
-  alert (treated as normal staff movement, not a customer walking off
-  with something).
+- `detector.py`'s rule: a scan is flagged as a possible theft only if
+  the tag is **registered** and its status is anything other than
+  **Laundry** or **Storage** (in practice, that means **In Use**). An
+  **unregistered tag is never flagged by itself** - not every item is
+  necessarily tagged in the system yet, and other RFID-bearing things
+  (a room key card, someone's own tag) can pass the exit reader without
+  it meaning anything.
 - A flagged scan triggers `alarm.py`:
   - An on-screen "⚠ THEFT ALERT ⚠" pop-up with the item's details
   - A matching WhatsApp message sent to your phone via Twilio

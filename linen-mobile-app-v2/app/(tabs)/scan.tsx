@@ -568,18 +568,20 @@ function ExitScannerSection() {
       const item = await getItemByTag(tagId);
       const flagged = checkTag(item);
 
-      if (flagged) {
-        const message = item
-          ? `${item.itemType} (${tagId}) was detected at the exit scanner while marked ${item.status}.`
-          : `Unregistered tag (${tagId}) was detected at the exit scanner.`;
+      // checkTag() only ever returns true for a registered item (see
+      // its own comment for why unregistered tags aren't flagged at
+      // all) - `item` is guaranteed non-null here, `&& item` is just
+      // to satisfy the type checker.
+      if (flagged && item) {
+        const message = `${item.itemType} (${tagId}) was detected at the exit scanner while marked ${item.status}.`;
         await logTheftAlert(tagId, item, message);
         logItemEvent({
           tagId,
           eventType: 'alert_triggered',
-          oldStatus: item?.status ?? null,
-          customerName: item?.customerName ?? null,
-          roomNumber: item?.roomNumber ?? null,
-          detail: item?.itemType ?? null,
+          oldStatus: item.status,
+          customerName: item.customerName,
+          roomNumber: item.roomNumber,
+          detail: item.itemType,
         }).catch((err) => console.warn('Failed to log audit event:', err));
       }
 
