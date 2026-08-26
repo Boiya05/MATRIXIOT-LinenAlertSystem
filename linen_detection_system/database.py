@@ -198,6 +198,30 @@ def log_theft_alert(tag_id, item=None, message=""):
     ).execute()
 
 
+def has_active_alert(tag_id):
+    """
+    Check whether this tag already has an undismissed theft alert
+    waiting - used by main.py's exit scanner so a tag sitting near (or
+    repeatedly passing) the reader only raises one alert instead of a
+    fresh one every time it's re-scanned. Once dismissed (from any of
+    the three apps - theft_alerts is shared), the next flagged scan of
+    that tag raises a new one again.
+
+    Returns:
+        bool: True if an undismissed alert already exists for this tag.
+    """
+    response = (
+        get_client()
+        .table(ALERTS_TABLE_NAME)
+        .select("id")
+        .eq("tag_id", tag_id)
+        .eq("dismissed", False)
+        .limit(1)
+        .execute()
+    )
+    return bool(response.data)
+
+
 def log_item_event(
     tag_id,
     event_type,

@@ -239,6 +239,29 @@ export async function logTheftAlert(
   }
 }
 
+/**
+ * Whether this tag already has an undismissed theft alert waiting -
+ * used by the exit scanner so a tag sitting near (or repeatedly
+ * passing) the reader only raises one alert instead of a fresh one
+ * every time it's re-scanned. Once dismissed (by anyone, from any of
+ * the three apps - theft_alerts is shared), the next flagged scan of
+ * that tag raises a new one again.
+ */
+export async function hasActiveAlert(tagId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('theft_alerts')
+    .select('id')
+    .eq('tag_id', tagId)
+    .eq('dismissed', false)
+    .limit(1);
+
+  if (error) {
+    throw new Error(`Failed to check active alerts: ${error.message}`);
+  }
+
+  return (data ?? []).length > 0;
+}
+
 /** Every theft alert that hasn't been dismissed yet, newest first. */
 export async function getActiveAlerts(): Promise<AlertEvent[]> {
   const { data, error } = await supabase

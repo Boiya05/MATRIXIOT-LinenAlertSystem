@@ -100,7 +100,12 @@ between **Simulated** and **USB reader** mode where relevant:
 - **Exit scanner** - a Tag ID (typed, or from a real reader) runs
   through the same theft rule as `detector.py` (`lib/detector.ts`
   here); a flagged scan writes a `theft_alerts` row the same way the
-  desktop app's `alarm.py` does.
+  desktop app's `alarm.py` does. A 5-second cooldown per tag
+  (`RESCAN_COOLDOWN_MS`) covers a real reader re-reading the same tag
+  many times a second; beyond that, a tag with an alert already active
+  doesn't raise a second one at all (`hasActiveAlert()`) - dismissing
+  the existing one (from any of the three apps) is what lets the next
+  flagged scan raise a new one.
 
 A USB "keyboard wedge" reader (types the tag ID and presses Enter, no
 special driver needed) already works today through Simulated mode's

@@ -192,6 +192,14 @@ continuous-inventory mode - which reports the same tag many times a
 second while it's in range - doesn't log a duplicate theft alert for
 every single one of those reads.
 
+Beyond that cooldown, a tag with an alert already active (not yet
+dismissed) doesn't raise a second one either (`hasActiveAlert()` in
+`data/linen-data.ts`) - re-scanning it, or a reader that keeps seeing
+it well past the cooldown, won't spam more alerts for the same event.
+Dismissing the existing alert - from this dashboard, the mobile app,
+or the desktop app - is what lets the next flagged scan raise a new
+one; `theft_alerts` is shared across all three.
+
 ## Current status
 
 Working: login, live dashboard stats, live theft alerts with dismiss,

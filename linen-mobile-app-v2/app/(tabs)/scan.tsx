@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
-import { getItemByTag, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
+import { getItemByTag, hasActiveAlert, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { checkTag } from '@/lib/detector';
@@ -607,16 +607,27 @@ function ExitScannerSection() {
       // all) - `item` is guaranteed non-null here, `&& item` is just
       // to satisfy the type checker.
       if (flagged && item) {
-        const message = `${item.itemType} (${tagId}) was detected at the exit scanner while marked ${item.status}.`;
-        await logTheftAlert(tagId, item, message);
-        logItemEvent({
-          tagId,
-          eventType: 'alert_triggered',
-          oldStatus: item.status,
-          customerName: item.customerName,
-          roomNumber: item.roomNumber,
-          detail: item.itemType,
-        }).catch((err) => console.warn('Failed to log audit event:', err));
+        // Don't raise a second alert for a tag that already has one
+        // open - a tag sitting near the reader (or scanned again
+        // before anyone's dealt with the first alert) would otherwise
+        // spam a new theft_alerts row and a new notification every
+        // time it's read. The scan result below still shows this as
+        // flagged either way; only the alert itself is skipped.
+        // Dismissing the existing alert (from any of the three apps)
+        // is what allows the next flagged scan to raise a new one.
+        const alreadyAlerted = await hasActiveAlert(tagId);
+        if (!alreadyAlerted) {
+          const message = `${item.itemType} (${tagId}) was detected at the exit scanner while marked ${item.status}.`;
+          await logTheftAlert(tagId, item, message);
+          logItemEvent({
+            tagId,
+            eventType: 'alert_triggered',
+            oldStatus: item.status,
+            customerName: item.customerName,
+            roomNumber: item.roomNumber,
+            detail: item.itemType,
+          }).catch((err) => console.warn('Failed to log audit event:', err));
+        }
       }
 
       setLastResult({ tagId, flagged, item });

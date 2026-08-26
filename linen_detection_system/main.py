@@ -701,6 +701,14 @@ class LinenApp:
         alarm (pop-up, Telegram, WhatsApp, a theft_alerts row) once per
         read instead of once per actual event. See
         RESCAN_COOLDOWN_SECONDS above.
+
+        Beyond that short cooldown, a tag that already has an
+        undismissed alert waiting doesn't raise a second one either -
+        re-scanning something that's already flagged (or a reader
+        that keeps seeing it well past the cooldown) shouldn't spam
+        more alerts for the same event. Dismissing the existing one
+        (from any of the three apps - theft_alerts is shared) is what
+        allows the next flagged scan to raise a new one.
         """
         now = time.monotonic()
         last_seen = self._exit_last_seen.get(tag_id)
@@ -710,7 +718,7 @@ class LinenApp:
 
         item = database.get_item_by_tag(tag_id)
 
-        if detector.check_tag(tag_id, item):
+        if detector.check_tag(tag_id, item) and not database.has_active_alert(tag_id):
             alarm.trigger_alarm(tag_id, item, actor_label=self._get_operator_label())
 
     def _on_delete_selected(self):

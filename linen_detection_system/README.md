@@ -146,8 +146,15 @@ yet tells you instead of guessing - register it above first.
   - A matching WhatsApp message sent to your phone via Twilio
 - A real reader reads the same tag many times a second for as long as
   it's in range - a 5-second cooldown per tag
-  (`EXIT_RESCAN_COOLDOWN_SECONDS` in `main.py`) means one tag walking
-  past only triggers the alarm once, not once per read.
+  (`RESCAN_COOLDOWN_SECONDS` in `main.py`) means one tag walking past
+  only triggers the alarm once, not once per read.
+- Beyond that cooldown, a tag with an alert already active (not yet
+  dismissed) doesn't raise a second one either - re-scanning it, or a
+  reader that keeps seeing it well past the cooldown, won't spam more
+  alerts for the same event (`database.has_active_alert()`). Dismiss
+  the existing alert from the mobile app or web dashboard (desktop
+  itself has no dismiss button - `theft_alerts` is shared across all
+  three apps) to let the next flagged scan raise a new one.
 
 Close the window to exit the program.
 
