@@ -28,6 +28,8 @@ export const Colors = {
     statusStorage: '#7C3AED',
     danger: '#DC2626',
     dangerBackground: '#FEE2E2',
+    warningText: '#92400E',
+    warningBackground: '#FFFBEB',
   },
   dark: {
     text: '#ECEDEE',
@@ -44,6 +46,8 @@ export const Colors = {
     statusStorage: '#A78BFA',
     danger: '#F87171',
     dangerBackground: '#3B1D1D',
+    warningText: '#FBBF24',
+    warningBackground: '#3D2E0F',
   },
 };
 

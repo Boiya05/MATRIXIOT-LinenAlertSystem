@@ -30,6 +30,8 @@ const MAPPING = {
   'person.fill': 'person',
   'clock.fill': 'history',
   'qrcode.viewfinder': 'qr-code-scanner',
+  'checkmark.circle.fill': 'check-circle',
+  circle: 'radio-button-unchecked',
 } as IconMapping;
 
 /**

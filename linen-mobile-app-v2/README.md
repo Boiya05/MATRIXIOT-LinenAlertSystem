@@ -109,6 +109,11 @@ between **Simulated** and **USB reader** mode where relevant:
   message, same as the desktop app - see **Telegram alerts** below for
   how, since this app can't hold the bot token itself.
 
+All three sections are gated to `staff` accounts - a signed-in
+`viewer` sees a notice and every control disabled up front, rather
+than only finding out via a rejected write. See **Role-based
+permissions** below.
+
 A USB "keyboard wedge" reader (types the tag ID and presses Enter, no
 special driver needed) already works today through Simulated mode's
 Tag ID fields, plugged in via a USB OTG cable - Android treats it as a
@@ -124,13 +129,22 @@ hardware).
 
 **List View** - a segmented view of all linen:
 - **In Use** - grouped by room, showing the customer and item count; tap a room to see who's in it and exactly which items
-- **Laundry** / **Storage** - grouped by item type instead (customer/room aren't meaningful once an item isn't with a guest), with a count per type; tap a category to see its list of Tag IDs
+- **Laundry** / **Storage** - grouped by item type instead (customer/room aren't meaningful once an item isn't with a guest), with a count per type; tap a category to see its list of Tag IDs, where a `staff` account also gets a **Select** button to multi-select and bulk-delete records (mirrors the web dashboard's Inventory page, scoped to whichever status + type you're already looking at instead of one flat searchable table)
 
 **History** - every alert you've already dismissed, newest first, with its original timestamp - kept separate from Home's active-alerts banner.
 
 **Settings** - notification/sound toggles, saved to your account (so
-they follow you across devices/reinstalls), plus your email and a
+they follow you across devices/reinstalls); an **Account** row showing
+your email and whether you have staff or viewer access; a **Manage**
+section linking to **Activity** (the audit trail - see below); and a
 **Log Out** button.
+
+**Activity** - reached from Settings, not its own tab (a 6th tab would
+crowd the bar) - the same audit trail the web dashboard's Activity
+page shows: who registered, edited, moved, or deleted an item, and who
+triggered or cleared an alert, across all three apps, searchable by
+tag/guest/room/actor, most recent 200 events. See **Audit trail (who
+did what, and when)** below for the underlying table.
 
 ## How it stays in sync
 
@@ -323,15 +337,20 @@ to re-run the whole block.
 
 **What happens to a non-staff (`viewer`) account today**: they can log
 into any of the three apps and see everything - stats, inventory,
-alerts, history - completely normally. If they try to register an
-item, dismiss an alert, or change a status, the write is silently
-rejected by Postgres (RLS denies it before it reaches the table) and
-the app shows whatever generic error message that specific action
-already has - none of the three apps currently show a friendlier
-"you don't have permission" message or hide write controls for
-viewers. That's a real, known gap in the UI layer (not the security
-layer, which is solid) - worth building once there's an actual
-non-staff account to test it against.
+alerts, history - completely normally. On this app and the web
+dashboard, every write-capable control (registering, assigning,
+scanning, deleting) shows a plain-language notice and disables itself
+up front, using `isStaff` from the auth context, rather than only
+finding out via a rejected write - see `contexts/auth-context.tsx` and
+each screen's `ViewerNotice`. That's a convenience layer only, not the
+real security boundary - the RLS policies above are what actually
+enforce this even if a screen's gating were ever wrong or missing, and
+`data/linen-data.ts`'s `friendlyWriteError` is still there as the
+fallback for exactly that case. The desktop app has no such gating and
+doesn't need any: it authenticates as `service_role` (see its
+README), which bypasses this table's RLS entirely, so there's no
+viewer/staff distinction to make there - it's inherently trusted,
+being a login-less internal tool.
 
 ## Audit trail (who did what, and when)
 
@@ -407,11 +426,12 @@ create policy "Staff can insert item events"
   printed/logged, never allowed to block or fail the actual action
   (registering an item, dismissing an alert, etc.) it's describing.
 
-**Where to see it**: the web dashboard's new **Activity** page lists
-the 200 most recent events, searchable by tag/guest/room/actor, live
-via Realtime. Mobile and desktop don't have their own viewer for
-it - the web dashboard is already the "management reviews things from
-a browser" app, so that's where this lives.
+**Where to see it**: the web dashboard's **Activity** page, and this
+app's own **Activity** screen (Settings → Activity - see **What's in
+the app** above), both list the 200 most recent events, searchable by
+tag/guest/room/actor, live via Realtime. Desktop doesn't have its own
+viewer for it - it has no equivalent "browse and search records" part
+of the UI to begin with, so there was nowhere natural to add one.
 
 ## Telegram alerts
 
@@ -513,13 +533,18 @@ confirmed working; the receiving half needs testing on your phone.
 ## Current status
 
 Working: login/signup with persistent sessions, live item stats,
-room/category browsing with drill-down, real-time theft alerts with
-dismiss, alert history, per-account settings, and item registration +
-exit-scan theft detection from the Scan tab, in both Simulated mode
-and (per the supervisor-reviewed architecture doc) a real USB reader
-mode via Android's USB Host API - all protected by Supabase Row Level
-Security now that real accounts exist, and role-gated so only `staff`
-accounts can write. Every registration, edit, status change, deletion,
+room/category browsing with drill-down (plus staff-only bulk delete),
+real-time theft alerts with dismiss, alert history, a searchable
+Activity screen (the audit trail), per-account settings, and item
+registration + exit-scan theft detection from the Scan tab, in both
+Simulated mode and (per the supervisor-reviewed architecture doc) a
+real USB reader mode via Android's USB Host API - all protected by
+Supabase Row Level Security now that real accounts exist, and
+role-gated so only `staff` accounts can write, both at the RLS layer
+and proactively in the UI (disabled controls + a notice for `viewer`
+accounts, matching the web dashboard). A flagged exit-scan also
+relays a Telegram alert through the web dashboard - see **Telegram
+alerts** above. Every registration, edit, status change, deletion,
 and alert trigger/dismissal across all three apps also writes to an
 append-only audit trail - see **Audit trail** above. Simulated mode
 was verified against live data before being committed: a full

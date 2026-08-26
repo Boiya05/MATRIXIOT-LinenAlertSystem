@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +24,7 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const border = useThemeColor({}, 'border');
-  const { user, signOut } = useAuth();
+  const { user, role, roleLoading, signOut } = useAuth();
   const { themePreference, setThemePreference } = useThemePreference();
 
   const [alertsEnabled, setAlertsEnabled] = useState(true);
@@ -174,11 +175,34 @@ export default function SettingsScreen() {
           </SettingsRow>
         </SettingsSection>
 
+        <SettingsSection title="🗂️ Manage">
+          <PressableScale
+            onPress={() => router.push('/activity')}
+            style={[styles.row, { backgroundColor: colors.cardBackground, borderColor: border }]}>
+            <View style={[styles.rowIconWrap, { backgroundColor: `${colors.tint}22` }]}>
+              <IconSymbol name="clock.fill" size={18} color={colors.tint} />
+            </View>
+            <View style={styles.rowTextWrap}>
+              <ThemedText type="defaultSemiBold">Activity</ThemedText>
+              <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
+                The audit trail - who did what, and when
+              </ThemedText>
+            </View>
+            <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+          </PressableScale>
+        </SettingsSection>
+
         <SettingsSection title="👤 Account">
           <SettingsRow
             icon="person.fill"
             label={user?.email ?? 'Signed in'}
-            description="Settings above are saved to this account"
+            description={
+              roleLoading
+                ? 'Checking access level…'
+                : role === 'staff'
+                  ? '✓ Staff access - can register, assign, and scan'
+                  : 'Viewer access - ask an admin for staff access to register or scan'
+            }
             color={colors}
             border={border}
           />

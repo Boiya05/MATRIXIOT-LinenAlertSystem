@@ -174,6 +174,20 @@ export async function saveLinenItem(item: LinenItem): Promise<void> {
 }
 
 /**
+ * Delete a linen item by its tag ID - mirrors the desktop app's
+ * database.delete_linen_item() and the web dashboard's copy of this
+ * same function. Used by the List View tab's bulk delete (see
+ * app/category.tsx).
+ */
+export async function deleteLinenItem(tagId: string): Promise<void> {
+  const { error } = await supabase.from('linen_items').delete().eq('tag_id', tagId);
+
+  if (error) {
+    throw friendlyWriteError('delete item', error);
+  }
+}
+
+/**
  * Record a theft alert - mirrors the desktop app's
  * database.log_theft_alert(). Called by the Scan tab's exit scanner
  * when a scanned tag is flagged (see lib/detector.ts).
@@ -301,6 +315,54 @@ export async function logItemEvent(params: {
   if (error) {
     throw friendlyWriteError('log item event', error);
   }
+}
+
+function mapRowToItemEvent(row: {
+  id: number;
+  tag_id: string;
+  event_type: ItemEventType;
+  old_status: string | null;
+  new_status: string | null;
+  customer_name: string | null;
+  room_number: string | null;
+  detail: string | null;
+  actor_label: string | null;
+  source_app: 'desktop' | 'mobile' | 'web';
+  created_at: string;
+}): ItemEvent {
+  return {
+    id: row.id,
+    tagId: row.tag_id,
+    eventType: row.event_type,
+    oldStatus: row.old_status,
+    newStatus: row.new_status,
+    customerName: row.customer_name,
+    roomNumber: row.room_number,
+    detail: row.detail,
+    actorLabel: row.actor_label,
+    sourceApp: row.source_app,
+    timestamp: formatAlertTimestamp(row.created_at),
+  };
+}
+
+/**
+ * The most recent audit-trail events across every tag, newest first -
+ * backs the Activity screen (see app/activity.tsx). Capped at 200
+ * rows; this is a recent-history view, not a full export. Mirrors the
+ * web dashboard's copy of this same function.
+ */
+export async function getRecentItemEvents(): Promise<ItemEvent[]> {
+  const { data, error } = await supabase
+    .from('linen_item_events')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (error) {
+    throw new Error(`Failed to load item events: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapRowToItemEvent);
 }
 
 export interface LinenStats {

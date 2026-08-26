@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
+import { useAuth } from '@/contexts/auth-context';
 import { getItemByTag, hasActiveAlert, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -83,6 +84,24 @@ function SectionCard({
         {headerRight}
       </View>
       {children}
+    </View>
+  );
+}
+
+/**
+ * Shown above a section's controls for a signed-in `viewer` account -
+ * they can see everything, but writes here would just be rejected by
+ * Row Level Security. Mirrors the web dashboard's ViewerNotice.
+ */
+function ViewerNotice() {
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
+
+  return (
+    <View style={[styles.viewerNotice, { backgroundColor: colors.warningBackground }]}>
+      <ThemedText style={{ color: colors.warningText, fontSize: 13 }}>
+        👀 You&apos;re signed in as a viewer. Ask an admin for staff access to use this.
+      </ThemedText>
     </View>
   );
 }
@@ -162,6 +181,7 @@ function ItemTypePicker({ value, onChange }: { value: string; onChange: (itemTyp
 function RegisterSection() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const { isStaff, roleLoading } = useAuth();
 
   const [pending, setPending] = useState<{ tagId: string; itemType: string }[]>([]);
   const [selectedItemType, setSelectedItemType] = useState(ITEM_TYPES[0]);
@@ -225,6 +245,7 @@ function RegisterSection() {
   // queue useReader's poll loop drains either way, so handleTag above
   // (with its duplicate-scan check) is still the one processing path.
   function handleManualSubmit() {
+    if (!isStaff) return; // matches the button's disabled state - Enter shouldn't bypass it
     const tagId = manualTagId.trim().toUpperCase();
     if (!tagId) return;
     reader.simulateScan(tagId);
@@ -300,6 +321,7 @@ function RegisterSection() {
           onDisconnectUsb={reader.disconnectUsbSerial}
         />
       }>
+      {!roleLoading && !isStaff && <ViewerNotice />}
       {reader.error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{reader.error}</ThemedText>}
 
       <View>
@@ -324,10 +346,12 @@ function RegisterSection() {
             onChangeText={setManualTagId}
             onSubmitEditing={handleManualSubmit}
             returnKeyType="done"
+            editable={isStaff}
           />
           <PressableScale
             onPress={handleManualSubmit}
-            style={[styles.scanExitButton, { backgroundColor: colors.tint }]}>
+            disabled={!isStaff}
+            style={[styles.scanExitButton, { backgroundColor: colors.tint, opacity: isStaff ? 1 : 0.5 }]}>
             <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Scan</ThemedText>
           </PressableScale>
         </View>
@@ -377,8 +401,8 @@ function RegisterSection() {
 
       <PressableScale
         onPress={handleSave}
-        disabled={saving}
-        style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving ? 0.6 : 1 }]}>
+        disabled={saving || !isStaff}
+        style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving || !isStaff ? 0.6 : 1 }]}>
         {saving ? (
           <ActivityIndicator color={colors.background} />
         ) : (
@@ -404,6 +428,7 @@ function RegisterSection() {
 function AssignToGuestSection() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const { isStaff, roleLoading } = useAuth();
 
   const [manualTagId, setManualTagId] = useState('');
   const [looking, setLooking] = useState(false);
@@ -415,6 +440,7 @@ function AssignToGuestSection() {
   const [status, setStatus] = useState<string | null>(null);
 
   async function handleLookup() {
+    if (!isStaff) return;
     const tagId = manualTagId.trim().toUpperCase();
     if (!tagId) return;
 
@@ -446,7 +472,7 @@ function AssignToGuestSection() {
   }
 
   async function handleAssign() {
-    if (pending.length === 0) return;
+    if (!isStaff || pending.length === 0) return;
     const trimmedCustomer = customerName.trim();
     const trimmedRoom = roomNumber.trim();
     if (!trimmedCustomer || !trimmedRoom) {
@@ -489,6 +515,8 @@ function AssignToGuestSection() {
     <SectionCard
       title="🙋 Assign to guest"
       subtitle="Scan already-registered tags, then assign them all to one guest and room at once.">
+      {!roleLoading && !isStaff && <ViewerNotice />}
+
       <View style={styles.exitRow}>
         <TextInput
           style={[
@@ -503,11 +531,12 @@ function AssignToGuestSection() {
           onChangeText={setManualTagId}
           onSubmitEditing={handleLookup}
           returnKeyType="done"
+          editable={isStaff}
         />
         <PressableScale
           onPress={handleLookup}
-          disabled={looking}
-          style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: looking ? 0.6 : 1 }]}>
+          disabled={looking || !isStaff}
+          style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: looking || !isStaff ? 0.6 : 1 }]}>
           <ThemedText style={{ color: colors.background, fontWeight: '700' }}>
             {looking ? 'Looking…' : 'Add'}
           </ThemedText>
@@ -561,8 +590,8 @@ function AssignToGuestSection() {
 
       <PressableScale
         onPress={handleAssign}
-        disabled={saving}
-        style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving ? 0.6 : 1 }]}>
+        disabled={saving || !isStaff}
+        style={[styles.primaryButton, { backgroundColor: colors.tint, opacity: saving || !isStaff ? 0.6 : 1 }]}>
         {saving ? (
           <ActivityIndicator color={colors.background} />
         ) : (
@@ -582,6 +611,7 @@ type ScanResult = { tagId: string; flagged: boolean; item: LinenItem | null };
 function ExitScannerSection() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const { isStaff, roleLoading } = useAuth();
 
   const [manualTagId, setManualTagId] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -646,6 +676,7 @@ function ExitScannerSection() {
   const reader = useReader('exit_reader', handleTag);
 
   function handleManualSubmit() {
+    if (!isStaff) return; // matches the button's disabled state - Enter shouldn't bypass it
     const tagId = manualTagId.trim().toUpperCase();
     if (!tagId) return;
     reader.simulateScan(tagId);
@@ -665,6 +696,7 @@ function ExitScannerSection() {
           onDisconnectUsb={reader.disconnectUsbSerial}
         />
       }>
+      {!roleLoading && !isStaff && <ViewerNotice />}
       {reader.error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{reader.error}</ThemedText>}
       {error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{error}</ThemedText>}
 
@@ -683,11 +715,12 @@ function ExitScannerSection() {
             onChangeText={setManualTagId}
             onSubmitEditing={handleManualSubmit}
             returnKeyType="done"
+            editable={isStaff}
           />
           <PressableScale
             onPress={handleManualSubmit}
-            disabled={processing}
-            style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: processing ? 0.6 : 1 }]}>
+            disabled={processing || !isStaff}
+            style={[styles.scanExitButton, { backgroundColor: colors.text, opacity: processing || !isStaff ? 0.6 : 1 }]}>
             <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Scan</ThemedText>
           </PressableScale>
         </View>
@@ -732,6 +765,12 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 20, gap: 20 },
   header: { gap: 4, marginBottom: 4 },
+  viewerNotice: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 4,
+  },
   card: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
