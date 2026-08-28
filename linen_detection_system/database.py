@@ -136,6 +136,27 @@ def get_item_by_tag(tag_id):
     return LinenItem(**response.data[0]) if response.data else None
 
 
+def get_items_by_tags(tag_ids):
+    """
+    Look up every already-registered tag among a given list of tag
+    IDs, in one call - used by main.py's batch save to catch a race
+    (another device registered one of these tags after
+    self._registered_items was last refreshed, but before Save was
+    clicked) without paying a network round-trip per scan while
+    scanning a batch. See main.py's _refresh_item_table() and
+    _on_assign().
+
+    Returns:
+        list[LinenItem]: the subset of tag_ids that are actually
+        registered. Empty if none are (or tag_ids itself is empty).
+    """
+    if not tag_ids:
+        return []
+
+    response = get_client().table(TABLE_NAME).select("*").in_("tag_id", tag_ids).execute()
+    return [LinenItem(**row) for row in response.data]
+
+
 def delete_linen_item(tag_id):
     """
     Delete a linen item record by its tag ID.

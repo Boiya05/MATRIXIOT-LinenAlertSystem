@@ -92,7 +92,10 @@ between **Simulated** and **USB reader** mode where relevant:
   A tag that's already registered can't be scanned into a new
   registration - it would silently overwrite its existing data - so
   scanning one just shows its current status instead; use **Assign to
-  guest** for it instead.
+  guest** for it instead. A live "N scanned" badge tracks the pending
+  batch, and that duplicate check runs against a local cache instead of
+  a network call per scan - see **Reader speed & batch scanning**
+  below for why.
 - **Assign to guest** - the other half of that: scan any number of
   already-registered tags, then attach (or change) one Customer Name +
   Room Number for all of them at once, flipping each one's status to
@@ -126,6 +129,34 @@ OTG cable plus a dev-client build instead of Expo Go; see
 unverified (the actual reader protocol is a placeholder until a model
 is chosen, and on-device behavior hasn't been tested against real
 hardware).
+
+## Reader speed & batch scanning
+
+Two things specific to running a real UHF reader in keyboard-wedge
+mode, not something a typed-by-hand Tag ID field would ever hit:
+
+- **Merged reads.** A reader in continuous-inventory mode can
+  occasionally drop the Enter keystroke between two very fast
+  back-to-back reads - confirmed happening in practice, not just a
+  theoretical risk - landing as one long string that's actually two
+  (or more) tag IDs glued together with no separator.
+  `hardware/base.ts`'s `push()` recovers from this: a read that's all
+  hex characters and an exact multiple of 24 (the fixed length of this
+  hardware's tag IDs) gets split back into individual tag IDs before
+  anything downstream sees it, since every reader implementation
+  funnels through `push()` rather than touching the queue directly. A
+  read that doesn't match that exact pattern passes through unchanged.
+- **Per-scan network latency.** Register items' "already registered?"
+  check used to call `getItemByTag()` on every single scan - with a
+  real reader flooding reads during a batch registration, that
+  round-trip was the actual limit on how fast you could move through a
+  stack of items. It now checks a local cache (loaded once, kept
+  current as items are saved) instead, so scanning itself never waits
+  on the network. Since that cache can still go a few seconds stale (a
+  different device registering the same tag in the meantime), tapping
+  **Save** does one batched re-check of the whole pending list against
+  the database first (`getItemsByTagIds()`) and quietly skips anything
+  that turns out to already be registered, rather than overwriting it.
 
 **List View** - a segmented view of all linen:
 - **In Use** - grouped by room, showing the customer and item count; tap a room to see who's in it and exactly which items

@@ -174,6 +174,27 @@ export async function saveLinenItem(item: LinenItem): Promise<void> {
 }
 
 /**
+ * Look up every already-registered tag among a given set of tag IDs,
+ * in one call - used by the Register items batch save to catch a race
+ * (another device registered one of these tags after this session's
+ * local "already registered?" cache was built, but before Save was
+ * tapped) without paying a network round-trip per scan. See
+ * app/(tabs)/scan.tsx's RegisterSection for how the local cache and
+ * this function work together. Mirrors the web dashboard's copy.
+ */
+export async function getItemsByTagIds(tagIds: string[]): Promise<LinenItem[]> {
+  if (tagIds.length === 0) return [];
+
+  const { data, error } = await supabase.from('linen_items').select('*').in('tag_id', tagIds);
+
+  if (error) {
+    throw new Error(`Failed to check tags: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapRowToLinenItem);
+}
+
+/**
  * Delete a linen item by its tag ID - mirrors the desktop app's
  * database.delete_linen_item() and the web dashboard's copy of this
  * same function. Used by the List View tab's bulk delete (see

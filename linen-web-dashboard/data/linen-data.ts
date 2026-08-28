@@ -181,6 +181,27 @@ export async function getItemByTag(tagId: string): Promise<LinenItem | null> {
 }
 
 /**
+ * Look up every already-registered tag among a given set of tag IDs,
+ * in one call - used by the Register items batch save to catch a race
+ * (another device registered one of these tags after this session's
+ * local "already registered?" cache was built, but before Save was
+ * clicked) without paying a network round-trip per scan. See
+ * app/scan/page.tsx's RegisterSection for how the local cache and this
+ * function work together.
+ */
+export async function getItemsByTagIds(tagIds: string[]): Promise<LinenItem[]> {
+  if (tagIds.length === 0) return [];
+
+  const { data, error } = await supabase.from('linen_items').select('*').in('tag_id', tagIds);
+
+  if (error) {
+    throw new Error(`Failed to check tags: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapRowToLinenItem);
+}
+
+/**
  * Save a linen item - inserts a new row, or updates the existing one
  * if this tag_id is already registered (same upsert-on-tag_id
  * behavior as the desktop app's database.save_linen_item()).

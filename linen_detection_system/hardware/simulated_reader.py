@@ -42,6 +42,10 @@ class SimulatedReader(RFIDReader):
         reader had just picked it up. main.py's poll loop then
         handles it through the same code path a real scan would use -
         this method is the only thing that's actually "simulated";
-        everything downstream of it is the real code.
+        everything downstream of it is the real code. Goes through
+        push() (not tag_queue directly) so a real keyboard-wedge
+        reader's occasional merged read gets split back into
+        individual tag IDs - see base.py's push()/
+        _split_concatenated_reads().
         """
-        self.tag_queue.put(tag_id)
+        self.push(tag_id)

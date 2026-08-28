@@ -76,6 +76,17 @@ class LinenApp:
         self._exit_last_seen = {}
         self._entry_last_seen = {}
 
+        # tag_id -> status, for every currently-registered item -
+        # rebuilt by _refresh_item_table() every time it runs (startup,
+        # and after every save/assign/edit/delete), so it's never more
+        # stale than the on-screen table already is. _handle_entry_scan()
+        # reads this instead of calling database.get_item_by_tag() on
+        # every single scan - with a real reader flooding reads during a
+        # batch registration, a network round-trip per scan was the
+        # actual bottleneck on how fast you could move through a stack
+        # of items; a local lookup is instant.
+        self._registered_items = {}
+
         # RFID hardware - see hardware/ for the abstraction layer.
         # Each role defaults to a SimulatedReader unless
         # hardware_config.json configures a real serial port for it
@@ -154,9 +165,12 @@ class LinenApp:
         self.entry_tag_entry.focus_set()
 
         # --- Pending scans: items scanned but not yet assigned ---
-        ttk.Label(self.root, text="Pending Items (scanned, not yet assigned):").pack(
-            anchor="w", padx=10
-        )
+        # A live count rather than a static heading - with a real
+        # reader flooding scans during a batch registration, seeing
+        # the number climb is the main feedback that scanning is
+        # actually being captured (see _update_pending_count()).
+        self.pending_count_label = ttk.Label(self.root, text="Pending Items: 0 scanned")
+        self.pending_count_label.pack(anchor="w", padx=10)
         pending_columns = ("tag_id", "item_type")
         self.pending_tree = ttk.Treeview(
             self.root, columns=pending_columns, show="headings", height=5, selectmode="browse"
@@ -447,11 +461,18 @@ class LinenApp:
         # to two different registrations at once. "Assign to Guest"
         # (or "Edit Selected" on desktop) is the right place to change
         # an existing item's details instead.
-        existing_item = database.get_item_by_tag(tag_id)
-        if existing_item is not None:
+        #
+        # Checked against self._registered_items (see __init__) rather
+        # than a fresh database.get_item_by_tag() call - a network
+        # round-trip on every single scan was the real limit on how
+        # fast a batch of tags could be registered. The cache is at
+        # most as stale as the on-screen table, which is refreshed
+        # after every write anyway.
+        existing_status = self._registered_items.get(tag_id)
+        if existing_status is not None:
             self.status_label.config(
                 text=(
-                    f"{tag_id} is already registered ({existing_item.status}) - "
+                    f"{tag_id} is already registered ({existing_status}) - "
                     "use Assign to Guest to change it instead of re-registering."
                 )
             )
@@ -461,8 +482,15 @@ class LinenApp:
 
         self.pending_items.append((tag_id, item_type))
         self.pending_tree.insert("", tk.END, values=(tag_id, item_type))
+        self._update_pending_count()
 
         self.status_label.config(text=f"Scanned {tag_id} ({item_type}). Added to pending list.")
+
+    def _update_pending_count(self):
+        """Keep the Pending Items heading's live count in sync with self.pending_items."""
+        count = len(self.pending_items)
+        noun = "item" if count == 1 else "items"
+        self.pending_count_label.config(text=f"Pending Items: {count} {noun} scanned")
 
     def _on_remove_pending(self):
         """
@@ -485,6 +513,7 @@ class LinenApp:
             if pending_tag != tag_id
         ]
         self.pending_tree.delete(selected[0])
+        self._update_pending_count()
 
         self.status_label.config(text=f"Removed {tag_id} from pending list.")
 
@@ -511,10 +540,29 @@ class LinenApp:
             messagebox.showwarning("Nothing to Save", "Scan at least one item first.")
             return
 
+        # _handle_entry_scan() only ever checked self._registered_items -
+        # a local cache, not a live lookup - so a tag registered by
+        # another device (or another app) in the gap between that cache
+        # last refreshing and this click could otherwise slip through
+        # and get silently overwritten by the save_linen_item() upsert
+        # below. One batched query here re-checks the whole pending list
+        # at once, right before it actually matters, instead of paying a
+        # network round-trip for every single scan on the way in.
+        already_registered = {
+            item.tag_id: item.status
+            for item in database.get_items_by_tags([tag_id for tag_id, _ in self.pending_items])
+        }
+        to_save = [
+            (tag_id, item_type)
+            for tag_id, item_type in self.pending_items
+            if tag_id not in already_registered
+        ]
+        skipped_count = len(self.pending_items) - len(to_save)
+
         assigning_now = bool(customer_name or room_number)
         status = STATUS_IN_USE if assigning_now else STATUS_STORAGE
 
-        for tag_id, item_type in self.pending_items:
+        for tag_id, item_type in to_save:
             item = LinenItem(
                 tag_id=tag_id,
                 customer_name=customer_name,
@@ -532,19 +580,23 @@ class LinenApp:
                 detail=item_type,
             )
 
-        saved_count = len(self.pending_items)
+        saved_count = len(to_save)
 
         self.pending_items.clear()
         for row in self.pending_tree.get_children():
             self.pending_tree.delete(row)
+        self._update_pending_count()
 
         self.customer_entry.delete(0, tk.END)
         self.room_entry.delete(0, tk.END)
 
         if assigning_now:
-            self.status_label.config(text=f"Saved and assigned {saved_count} item(s) to {customer_name}.")
+            message = f"Saved and assigned {saved_count} item(s) to {customer_name}."
         else:
-            self.status_label.config(text=f"Saved {saved_count} item(s) as unassigned stock.")
+            message = f"Saved {saved_count} item(s) as unassigned stock."
+        if skipped_count:
+            message += f" Skipped {skipped_count} already registered elsewhere - use Assign to Guest for those."
+        self.status_label.config(text=message)
         self._refresh_item_table()
 
     def _on_assign_guest_lookup(self):
@@ -896,7 +948,11 @@ class LinenApp:
         )
 
     def _refresh_item_table(self):
-        """Reload the table so it matches what's in the database."""
+        """
+        Reload the table so it matches what's in the database, and
+        rebuild self._registered_items (tag_id -> status) from the
+        same fetch - see that attribute's comment in __init__ for why.
+        """
         for row in self.tree.get_children():
             self.tree.delete(row)
 
@@ -908,7 +964,10 @@ class LinenApp:
         else:
             sort_by = "tag_id"
 
-        for item in database.get_all_items(sort_by=sort_by):
+        items = database.get_all_items(sort_by=sort_by)
+        self._registered_items = {item.tag_id: item.status for item in items}
+
+        for item in items:
             self.tree.insert(
                 "",
                 tk.END,

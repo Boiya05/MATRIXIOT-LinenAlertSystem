@@ -29,7 +29,11 @@ the one running the Python app.
   blank to save as unassigned stock; a tag that's already registered
   can't be scanned into a new registration, since that would silently
   overwrite its existing data - use **Assign to guest** for it
-  instead), **Assign to guest** (scan any
+  instead; a live "N scanned" count tracks the pending batch, and the
+  duplicate check runs against a local cache rather than a network
+  call per scan, so a real reader's rapid reads aren't bottlenecked by
+  round-trip latency - see **Real hardware from the browser** below),
+  **Assign to guest** (scan any
   number of already-registered tags, then attach or change one
   guest/room for all of them at once), and **Exit scanner** (the theft
   check). The two entry-side sections default to **Simulated** mode -
@@ -202,6 +206,18 @@ continuous-inventory mode - which reports the same tag many times a
 second while it's in range - doesn't log a duplicate theft alert for
 every single one of those reads.
 
+**A keyboard-wedge reader can occasionally drop the Enter keystroke
+between two very fast back-to-back reads** - confirmed happening in
+practice, not just a theoretical risk - landing as one long string
+that's actually two (or more) tag IDs glued together with no
+separator. `hardware/base.ts`'s `push()` recovers from this: a read
+that's all hex characters and an exact multiple of 24 (the fixed
+length of this hardware's tag IDs) gets split back into individual tag
+IDs before anything downstream sees it, since both `SimulatedReader`
+and `WebSerialReader` funnel through `push()` rather than touching the
+queue directly. A read that doesn't match that exact pattern passes
+through unchanged.
+
 Beyond that cooldown, a tag with an alert already active (not yet
 dismissed) doesn't raise a second one either (`hasActiveAlert()` in
 `data/linen-data.ts`) - re-scanning it, or a reader that keeps seeing
@@ -209,6 +225,18 @@ it well past the cooldown, won't spam more alerts for the same event.
 Dismissing the existing alert - from this dashboard, the mobile app,
 or the desktop app - is what lets the next flagged scan raise a new
 one; `theft_alerts` is shared across all three.
+
+**Register items' "already registered?" check runs against a local
+cache**, not a fresh `getItemByTag()` call per scan - loaded once when
+the section mounts, and kept current as items are saved. With a real
+reader flooding reads during a batch registration, that per-scan
+network round-trip used to be the actual limit on how fast you could
+move through a stack of items. Since the cache can still go a few
+seconds stale (a different device registering the same tag in the
+meantime), clicking **Save** does one batched re-check of the whole
+pending list against the database first (`getItemsByTagIds()` in
+`data/linen-data.ts`) and quietly skips anything that turns out to
+already be registered, rather than overwriting it.
 
 ## Telegram alerts
 

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,7 +14,16 @@ import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
-import { getItemByTag, hasActiveAlert, logItemEvent, logTheftAlert, saveLinenItem, type LinenItem } from '@/data/linen-data';
+import {
+  getAllItems,
+  getItemByTag,
+  getItemsByTagIds,
+  hasActiveAlert,
+  logItemEvent,
+  logTheftAlert,
+  saveLinenItem,
+  type LinenItem,
+} from '@/data/linen-data';
 import { useReader, type ReaderMode } from '@/hooks/use-reader';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { checkTag } from '@/lib/detector';
@@ -192,13 +201,33 @@ function RegisterSection() {
   const [saving, setSaving] = useState(false);
   const lastSeenRef = useRef<Map<string, number>>(new Map());
 
+  // tagId -> status, for every already-registered item - loaded once
+  // on mount, then kept current locally (see handleSave's update after
+  // a successful save). handleTag below checks against this instead
+  // of calling getItemByTag() on every single scan - with a real
+  // reader flooding reads during a batch registration, a network
+  // round-trip per scan was the actual limit on how fast you could
+  // move through a stack of items. Since this cache can still go
+  // stale (another device registers one of these tags mid-session),
+  // handleSave does one authoritative batched re-check right before
+  // committing - see its own comment.
+  const registeredCacheRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    getAllItems()
+      .then((items) => {
+        registeredCacheRef.current = new Map(items.map((item) => [item.tagId, item.status]));
+      })
+      .catch((err) => console.warn('Failed to preload registered tags:', err));
+  }, []);
+
   // Depends on selectedItemType and pending so a fresh closure
   // (carrying the currently-picked type and the current batch)
   // reaches useReader's poll loop every time either changes - see
   // hooks/use-reader.ts's onTagRef, which is refreshed every render
   // specifically so this works.
   const handleTag = useCallback(
-    async (tagId: string) => {
+    (tagId: string) => {
       const now = Date.now();
       const lastSeen = lastSeenRef.current.get(tagId);
       if (lastSeen && now - lastSeen < RESCAN_COOLDOWN_MS) {
@@ -216,14 +245,11 @@ function RegisterSection() {
       // registered again here - the same physical tag can't belong to
       // two different registrations at once. "Assign to guest" is the
       // right place to change an existing item's guest/room instead.
-      try {
-        const existing = await getItemByTag(tagId);
-        if (existing) {
-          setStatus(`${tagId} is already registered (${existing.status}) - use "Assign to guest" instead.`);
-          return;
-        }
-      } catch (err) {
-        setStatus(err instanceof Error ? err.message : 'Failed to check tag.');
+      // Checked against the local cache (instant) rather than a fresh
+      // network call - see registeredCacheRef's comment above.
+      const existingStatus = registeredCacheRef.current.get(tagId);
+      if (existingStatus) {
+        setStatus(`${tagId} is already registered (${existingStatus}) - use "Assign to guest" instead.`);
         return;
       }
 
@@ -275,7 +301,21 @@ function RegisterSection() {
 
     setSaving(true);
     try {
-      for (const item of pending) {
+      // handleTag only ever checked the local cache, not a live
+      // lookup - so a tag registered by another device in the gap
+      // between that cache last loading and this tap could otherwise
+      // slip through and get silently overwritten by saveLinenItem()'s
+      // upsert below. One batched query here re-checks the whole
+      // pending list at once, right before it actually matters,
+      // instead of a network round-trip per scan on the way in.
+      const alreadyRegistered = await getItemsByTagIds(pending.map((item) => item.tagId));
+      const alreadyRegisteredIds = new Set(alreadyRegistered.map((item) => item.tagId));
+      for (const item of alreadyRegistered) {
+        registeredCacheRef.current.set(item.tagId, item.status);
+      }
+      const toSave = pending.filter((item) => !alreadyRegisteredIds.has(item.tagId));
+
+      for (const item of toSave) {
         const linenItem: LinenItem = {
           tagId: item.tagId,
           customerName: trimmedCustomer,
@@ -284,6 +324,7 @@ function RegisterSection() {
           status: assigningNow ? 'In Use' : 'Storage',
         };
         await saveLinenItem(linenItem);
+        registeredCacheRef.current.set(linenItem.tagId, linenItem.status);
         logItemEvent({
           tagId: linenItem.tagId,
           eventType: 'registered',
@@ -293,11 +334,14 @@ function RegisterSection() {
           detail: linenItem.itemType,
         }).catch((err) => console.warn('Failed to log audit event:', err));
       }
-      setStatus(
-        assigningNow
-          ? `Registered and assigned ${pending.length} item(s) to ${trimmedCustomer}.`
-          : `Registered ${pending.length} item(s) as unassigned stock.`
-      );
+
+      let message = assigningNow
+        ? `Registered and assigned ${toSave.length} item(s) to ${trimmedCustomer}.`
+        : `Registered ${toSave.length} item(s) as unassigned stock.`;
+      if (alreadyRegisteredIds.size > 0) {
+        message += ` Skipped ${alreadyRegisteredIds.size} already registered elsewhere - use "Assign to guest" for those.`;
+      }
+      setStatus(message);
       setPending([]);
       setCustomerName('');
       setRoomNumber('');
@@ -363,6 +407,29 @@ function RegisterSection() {
         </View>
       )}
 
+      {/* Live count, not just a static list - with a real reader
+          flooding scans during a batch registration, seeing this climb
+          is the main feedback that scanning is actually being
+          captured (nothing else here pauses to confirm per tag). */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <ThemedText style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>Pending</ThemedText>
+        <View
+          style={{
+            borderRadius: 999,
+            paddingHorizontal: 8,
+            paddingVertical: 2,
+            backgroundColor: pending.length > 0 ? `${colors.tint}22` : colors.cardBackground,
+          }}>
+          <ThemedText
+            style={{
+              fontSize: 12,
+              fontWeight: '700',
+              color: pending.length > 0 ? colors.tint : colors.textSecondary,
+            }}>
+            {pending.length} scanned
+          </ThemedText>
+        </View>
+      </View>
       <View style={[styles.pendingList, { borderColor: colors.border }]}>
         {pending.length === 0 ? (
           <ThemedText style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', padding: 14 }}>

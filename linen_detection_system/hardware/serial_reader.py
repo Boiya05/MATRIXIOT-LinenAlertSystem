@@ -110,7 +110,7 @@ class SerialRFIDReader(RFIDReader):
 
             tag_id = self._parse_tag_from_frame(raw_frame)
             if tag_id:
-                self.tag_queue.put(tag_id)
+                self.push(tag_id)
 
     def _read_one_frame(self):
         """

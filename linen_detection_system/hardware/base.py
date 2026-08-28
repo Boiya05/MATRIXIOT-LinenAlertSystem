@@ -24,6 +24,42 @@ safety beyond "queue.Queue is already thread-safe."
 import queue
 from abc import ABC, abstractmethod
 
+# A UHF EPC Gen2 tag ID is a fixed-length hex string - every real tag
+# seen from this hardware has been exactly 24 hex characters (96-bit
+# EPC, the standard length for ISO18000-6C tags). A keyboard-wedge
+# reader in continuous-inventory mode can occasionally drop the Enter
+# keystroke between two back-to-back reads - confirmed happening in
+# practice, not just a theoretical risk - which lands here as one long
+# string that's actually two (or more) tag IDs glued together with no
+# separator. push() below recovers from that; see its docstring.
+TAG_ID_HEX_LENGTH = 24
+
+
+def _split_concatenated_reads(raw):
+    """
+    Recover from two or more tag reads landing as one string with no
+    separator between them (see TAG_ID_HEX_LENGTH's comment above).
+
+    Deliberately narrow: only splits a string that's *entirely* hex
+    and an exact multiple of TAG_ID_HEX_LENGTH - a genuinely different
+    tag format (a different reader, a barcode, a person typing
+    something else into the field) never matches that pattern, so it's
+    passed through unchanged rather than mangled.
+
+    Returns:
+        list[str]: one or more tag IDs. Always at least one element -
+        the original string unchanged if it doesn't look like a
+        concatenation of fixed-length hex reads.
+    """
+    cleaned = raw.strip().upper()
+    is_hex = len(cleaned) > 0 and all(c in "0123456789ABCDEF" for c in cleaned)
+    if is_hex and len(cleaned) > TAG_ID_HEX_LENGTH and len(cleaned) % TAG_ID_HEX_LENGTH == 0:
+        return [
+            cleaned[i : i + TAG_ID_HEX_LENGTH]
+            for i in range(0, len(cleaned), TAG_ID_HEX_LENGTH)
+        ]
+    return [raw]
+
 
 class RFIDReader(ABC):
     """Base class for anything that can produce a stream of tag reads."""
@@ -50,6 +86,18 @@ class RFIDReader(ABC):
     @abstractmethod
     def stop(self):
         """Stop listening. Safe to call even if never started."""
+
+    def push(self, tag_id):
+        """
+        Enqueue one tag read - the single funnel point every reader
+        implementation (simulated, keyboard-wedge, or a future real
+        serial reader) should call instead of touching tag_queue
+        directly, so the concatenated-read recovery in
+        _split_concatenated_reads() always applies, no matter the
+        source.
+        """
+        for single_id in _split_concatenated_reads(tag_id):
+            self.tag_queue.put(single_id)
 
     def poll(self):
         """

@@ -100,8 +100,20 @@ setup and what gets logged where.
   overwrite its existing customer/room/status (saving is an upsert
   keyed by Tag ID), so the same physical tag can't end up belonging to
   two different registrations. Use **Assign to Guest** or **Edit
-  Selected** to change an already-registered item instead.
-- Scan as many items as you like - they all wait in the pending list.
+  Selected** to change an already-registered item instead. This check
+  runs against a local, in-memory copy of what's registered (kept in
+  sync every time the Saved Items table refreshes) rather than a fresh
+  database lookup on every single scan - with a real reader flooding
+  reads during a batch, that per-scan network round-trip was the
+  actual limit on how fast you could move through a stack of items.
+  Because that local copy can still be a few seconds stale (another
+  device registering the same tag in the meantime), clicking **Save**
+  re-checks the whole pending batch against the database in one go
+  first, and quietly skips anything that turns out to already be
+  registered rather than overwriting it - see `database.get_items_by_tags()`.
+- Scan as many items as you like - they all wait in the pending list,
+  with a live **Pending Items: N scanned** count above it so a fast
+  run of scans is visibly being captured, not just silently queued.
 - **Customer Name** and **Room Number** are optional. Click **Save**
   with them blank to register the pending tags as unassigned stock -
   sorted into a category by Item Type alone, status **Storage** - and
@@ -301,6 +313,19 @@ today through the **Scan / type Tag ID** field (registering) and the
 field so it has focus, then scan. Everything below is for a reader
 that instead talks over a real serial port, which needs the setup
 (and the still-unwritten protocol parsing) described here.
+
+**A keyboard-wedge reader in continuous-inventory mode can drop the
+Enter keystroke between two very fast back-to-back reads** - confirmed
+happening in practice, not just a theoretical risk - which lands as
+one long string that's actually two (or more) tag IDs glued together
+with no separator. `hardware/base.py`'s `push()` recovers from this:
+a read that's all hex characters and an exact multiple of 24 (the
+fixed length of this hardware's tag IDs) gets split back into
+individual tag IDs before anything else sees it, since every reader
+implementation funnels through `push()` rather than touching the
+queue directly. A read that doesn't match that exact pattern is passed
+through unchanged - a barcode, a different tag format, or someone
+typing something else into the field is never mangled.
 
 **How it's structured:**
 
