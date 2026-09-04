@@ -166,9 +166,10 @@ mode, not something a typed-by-hand Tag ID field would ever hit:
 
 **Settings** - notification/sound toggles, saved to your account (so
 they follow you across devices/reinstalls); an **Account** row showing
-your email and whether you have staff or viewer access; a **Manage**
-section linking to **Activity** (the audit trail - see below); and a
-**Log Out** button.
+your email and whether you have viewer, staff, or admin access; a
+**Manage** section linking to **Activity** (the audit trail - see
+below) and, for admins only, **Admin** (see below); and a **Log Out**
+button.
 
 **Activity** - reached from Settings, not its own tab (a 6th tab would
 crowd the bar) - the same audit trail the web dashboard's Activity
@@ -176,6 +177,13 @@ page shows: who registered, edited, moved, or deleted an item, and who
 triggered or cleared an alert, across all three apps, searchable by
 tag/guest/room/actor, most recent 200 events. See **Audit trail (who
 did what, and when)** below for the underlying table.
+
+**Admin** - also reached from Settings, only shown there to `admin`
+accounts. Assign viewer/staff/admin access to any account by email,
+and see everyone who currently has a role, with a tap-to-change picker
+per row. See **Admin role** below for the setup and how the actual
+security boundary works (this screen is a convenience layer on top of
+it, not the boundary itself).
 
 ## How it stays in sync
 
@@ -287,7 +295,7 @@ way while testing. Consider turning off "Confirm email" under
 **Authentication → Sign In / Providers → Email** for a smoother local
 testing loop.
 
-## Role-based permissions (staff vs. viewer)
+## Role-based permissions (viewer / staff / admin)
 
 The setup above gives *every* logged-in account full read/write access
 to `linen_items` and `theft_alerts` - fine when you're the only user,
@@ -362,9 +370,11 @@ select id, 'staff' from auth.users where email = 'weihan_05@hotmail.com'
 on conflict (user_id) do update set role = 'staff';
 ```
 
-**To add another staff account later** (e.g. a real hotel employee),
-run just the last statement again with their email instead - no need
-to re-run the whole block.
+**To add another staff account by hand later**, run just the last
+statement again with their email instead - no need to re-run the whole
+block. In practice, once the migration below is applied, you shouldn't
+need to touch SQL for this again - see **Admin role** just below for
+the in-app way.
 
 **What happens to a non-staff (`viewer`) account today**: they can log
 into any of the three apps and see everything - stats, inventory,
@@ -382,6 +392,153 @@ doesn't need any: it authenticates as `service_role` (see its
 README), which bypasses this table's RLS entirely, so there's no
 viewer/staff distinction to make there - it's inherently trusted,
 being a login-less internal tool.
+
+## Admin role (assign roles from inside the app)
+
+Everything above only ever let a role be granted by hand-editing SQL
+in the Supabase dashboard - fine for one person bootstrapping the
+system, a real bottleneck the moment a hotel/hospital needs to onboard
+actual staff without asking a developer to run a query every time.
+This adds a third role, `admin`, that can assign roles (including
+other admins) from a screen in the app instead - **Admin** on the web
+dashboard's nav, or Settings → **Admin** on this app - and nothing
+about it requires SQL access anymore, past this one-time migration.
+
+Run once in the Supabase SQL Editor (after the **Role-based
+permissions** block above - this extends it, doesn't replace it):
+
+```sql
+-- Allow 'admin' as a third value.
+alter table user_roles drop constraint if exists user_roles_role_check;
+alter table user_roles
+  add constraint user_roles_role_check
+  check (role in ('viewer', 'staff', 'admin'));
+
+-- Denormalized email, set whenever a role is assigned - lets the admin
+-- screen list "who has what role" by email without ever needing to
+-- query auth.users directly from the client (the auth schema isn't
+-- exposed via the public API at all, by design).
+alter table user_roles add column if not exists email text;
+
+-- Admins can see every row, not just their own - needed to list
+-- current role assignments. The existing "Users can view their own
+-- role" policy is untouched - Postgres combines multiple permissive
+-- SELECT policies with OR, so this adds to it rather than replacing it.
+create policy "Admins can view all roles"
+  on user_roles for select
+  using (exists (select 1 from user_roles ur where ur.user_id = auth.uid() and ur.role = 'admin'));
+
+-- The one function that actually assigns a role. SECURITY DEFINER so
+-- it can resolve an email against auth.users on the server side (never
+-- exposed to the client) - but it checks the CALLER is already an
+-- admin first, before touching auth.users at all, so a non-admin can't
+-- use this to even probe whether some email has an account. This is
+-- also why there's no separate INSERT/UPDATE policy needed on
+-- user_roles for admins - this function does the write itself,
+-- bypassing RLS the same way service_role does, but only after its own
+-- internal check passes.
+create or replace function admin_set_user_role(target_email text, new_role text)
+returns table(success boolean, message text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_role text;
+  target_user_id uuid;
+begin
+  select role into caller_role from user_roles where user_id = auth.uid();
+  if caller_role is distinct from 'admin' then
+    return query select false, 'Only an admin can assign roles.';
+    return;
+  end if;
+
+  if new_role not in ('viewer', 'staff', 'admin') then
+    return query select false, 'Invalid role.';
+    return;
+  end if;
+
+  select id into target_user_id from auth.users where email = target_email;
+  if target_user_id is null then
+    return query select false, 'No account found with that email - create it first (see Admin role below).';
+    return;
+  end if;
+
+  insert into user_roles (user_id, role, email, updated_at)
+  values (target_user_id, new_role, target_email, now())
+  on conflict (user_id) do update set role = excluded.role, email = excluded.email, updated_at = now();
+
+  return query select true, 'Role updated.';
+end;
+$$;
+
+grant execute on function admin_set_user_role(text, text) to authenticated;
+
+-- Admin gets every write permission staff has, plus role assignment
+-- above - each "Staff can ..." policy from the block earlier now also
+-- accepts 'admin'.
+drop policy if exists "Staff can insert linen items" on linen_items;
+create policy "Staff can insert linen items"
+  on linen_items for insert
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')));
+
+drop policy if exists "Staff can update linen items" on linen_items;
+create policy "Staff can update linen items"
+  on linen_items for update
+  using (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')))
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')));
+
+drop policy if exists "Staff can delete linen items" on linen_items;
+create policy "Staff can delete linen items"
+  on linen_items for delete
+  using (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')));
+
+drop policy if exists "Staff can insert theft alerts" on theft_alerts;
+create policy "Staff can insert theft alerts"
+  on theft_alerts for insert
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')));
+
+drop policy if exists "Staff can update theft alerts" on theft_alerts;
+create policy "Staff can update theft alerts"
+  on theft_alerts for update
+  using (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')))
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')));
+
+drop policy if exists "Staff can insert item events" on linen_item_events;
+create policy "Staff can insert item events"
+  on linen_item_events for insert
+  with check (exists (select 1 from user_roles where user_id = auth.uid() and role in ('staff', 'admin')));
+
+-- Bootstrap: promote your own existing account (already staff, from
+-- the block above) to admin - skip this and there's nobody who can
+-- use admin_set_user_role() at all yet, including to promote anyone
+-- else. Replace the email with your real account's if different.
+insert into user_roles (user_id, role, email)
+select id, 'admin', email from auth.users where email = 'weihan_05@hotmail.com'
+on conflict (user_id) do update set role = 'admin', email = excluded.email;
+```
+
+**Creating an account to assign a role to** - two ways, same as
+before this feature existed:
+1. **Self-signup from this app** - the Sign Up screen on the login
+   flow. The new account starts as `viewer` automatically (a missing
+   `user_roles` row defaults to `viewer` - see `data/user-role.ts`).
+2. **Created for them in Supabase** - **Authentication → Users → Add
+   user** in the Supabase dashboard, if you'd rather not have them
+   self-register (no public sign-up exists on the web dashboard at
+   all, only here).
+
+Either way, once the account exists, open **Admin** (this app:
+Settings → Admin; web dashboard: the nav) as an admin account, enter
+their email, pick a role, and assign it - no SQL needed past the
+one-time migration above. `admin_set_user_role()` reports back clearly
+if the email doesn't match any account yet, rather than silently doing
+nothing.
+
+**Careful with self-demotion** - if you're the only admin and demote
+your own account, nobody is left who can call `admin_set_user_role()`
+to fix it; you'd be back to the manual SQL bootstrap above. The Admin
+screen warns before letting you do this to your own account.
 
 ## Audit trail (who did what, and when)
 

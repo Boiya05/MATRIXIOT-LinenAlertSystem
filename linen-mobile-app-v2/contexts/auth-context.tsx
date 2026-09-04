@@ -7,15 +7,17 @@
  * the main app, or (mid password reset) the "set a new password"
  * screen.
  *
- * Also tracks `role`/`isStaff` - every account can view everything,
- * but only a `staff` account can register items, run the exit
- * scanner, assign a guest, or delete items (see this app's README,
- * "Role-based permissions"). Screens use `isStaff` to show a plain-
- * language notice and disable those controls up front, instead of
- * someone only finding out via a raw Row Level Security error after
- * tapping something (data/linen-data.ts's friendlyWriteError is the
- * fallback for anywhere that isn't checked yet). Mirrors the web
- * dashboard's copy of this same context.
+ * Also tracks `role`/`isStaff`/`isAdmin` - every account can view
+ * everything, but only `staff` (or `admin`, a strict superset) can
+ * register items, run the exit scanner, assign a guest, or delete
+ * items, and only `admin` can assign roles to other accounts (see
+ * this app's README, "Role-based permissions" and "Admin role").
+ * Screens use `isStaff`/`isAdmin` to show a plain-language notice and
+ * disable those controls up front, instead of someone only finding
+ * out via a raw Row Level Security error after tapping something
+ * (data/linen-data.ts's friendlyWriteError is the fallback for
+ * anywhere that isn't checked yet). Mirrors the web dashboard's copy
+ * of this same context.
  */
 
 import type { Session, User } from '@supabase/supabase-js';
@@ -31,6 +33,7 @@ interface AuthContextValue {
   role: UserRole | null;
   roleLoading: boolean;
   isStaff: boolean;
+  isAdmin: boolean;
   /**
    * True from the moment a password-recovery deep link establishes a
    * session until updatePassword() succeeds (or the user signs out).
@@ -128,7 +131,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       role,
       roleLoading,
-      isStaff: role === 'staff',
+      // Admin is a strict superset of staff - every staff-gated
+      // control also has to work for an admin, without needing a
+      // separate 'staff' row for the same account.
+      isStaff: role === 'staff' || role === 'admin',
+      isAdmin: role === 'admin',
       isPasswordRecovery,
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });

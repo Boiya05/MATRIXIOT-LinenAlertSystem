@@ -54,6 +54,12 @@ the one running the Python app.
   SQL that creates the underlying `linen_item_events` table — same
   shared-setup pattern as the RLS/Realtime SQL, only needs running
   once per Supabase project, not once per app.
+- **Admin** (`/admin`) — only shown in the nav to `admin` accounts.
+  Assign viewer/staff/admin access to any account by email, and see
+  everyone who currently has a role. See the mobile app's README
+  ("Admin role") for the SQL and how the actual security boundary
+  works — this page is a convenience layer on top of it, not the
+  boundary itself.
 
 ## Project structure
 
@@ -272,12 +278,15 @@ already happened by the time this is called.
 
 Working: login, live dashboard stats, live theft alerts with dismiss,
 searchable/filterable inventory with bulk delete, alert history, the
-audit trail (Activity), and item registration (optional guest/room,
-real USB hardware via a manual field or Web Serial) + a separate
-Assign to guest step + exit-scan theft detection (which now also
-relays a Telegram alert, the same as the desktop app - see **Telegram
-alerts** above) - all reading and writing the same Supabase project as
-the desktop and mobile apps,
+audit trail (Activity), an Admin page for assigning viewer/staff/admin
+access by email (see **Admin role** in the mobile app's README), and
+item registration (optional guest/room, real USB hardware via a manual
+field or Web Serial, local-cache duplicate checking, and recovery from
+merged/concatenated reads - see **Real hardware from the browser**
+above) + a separate Assign to guest step + exit-scan theft detection
+(which now also relays a Telegram alert, the same as the desktop app -
+see **Telegram alerts** above) - all reading and writing the same
+Supabase project as the desktop and mobile apps,
 protected by the same Row Level Security policies. Verified against
 live data before being committed: a full register → assign → exit-scan
 → theft-alert-logged pass through the real UI, using a throwaway test

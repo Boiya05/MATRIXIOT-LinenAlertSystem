@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const border = useThemeColor({}, 'border');
-  const { user, role, roleLoading, signOut } = useAuth();
+  const { user, role, roleLoading, isAdmin, signOut } = useAuth();
   const { themePreference, setThemePreference } = useThemePreference();
 
   const [alertsEnabled, setAlertsEnabled] = useState(true);
@@ -190,6 +190,23 @@ export default function SettingsScreen() {
             </View>
             <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
           </PressableScale>
+
+          {isAdmin && (
+            <PressableScale
+              onPress={() => router.push('/admin')}
+              style={[styles.row, { backgroundColor: colors.cardBackground, borderColor: border }]}>
+              <View style={[styles.rowIconWrap, { backgroundColor: `${colors.tint}22` }]}>
+                <IconSymbol name="person.fill" size={18} color={colors.tint} />
+              </View>
+              <View style={styles.rowTextWrap}>
+                <ThemedText type="defaultSemiBold">Admin</ThemedText>
+                <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  Assign staff/admin access to accounts
+                </ThemedText>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+            </PressableScale>
+          )}
         </SettingsSection>
 
         <SettingsSection title="👤 Account">
@@ -199,9 +216,11 @@ export default function SettingsScreen() {
             description={
               roleLoading
                 ? 'Checking access level…'
-                : role === 'staff'
-                  ? '✓ Staff access - can register, assign, and scan'
-                  : 'Viewer access - ask an admin for staff access to register or scan'
+                : role === 'admin'
+                  ? '✓ Admin access - can register, assign, scan, and assign roles'
+                  : role === 'staff'
+                    ? '✓ Staff access - can register, assign, and scan'
+                    : 'Viewer access - ask an admin for staff access to register or scan'
             }
             color={colors}
             border={border}

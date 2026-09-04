@@ -2,18 +2,18 @@
  * data/user-role.ts
  *
  * Reads the signed-in account's row in user_roles (see this app's
- * README, "Role-based permissions") - a missing row means 'viewer',
- * matching that table's documented default. Used by
+ * README, "Role-based permissions" and "Admin role") - a missing row
+ * means 'viewer', matching that table's documented default. Used by
  * contexts/auth-context.tsx so every screen can cheaply check
- * `isStaff` instead of finding out the hard way when a write gets
- * rejected by Row Level Security (see data/linen-data.ts's
+ * `isStaff`/`isAdmin` instead of finding out the hard way when a
+ * write gets rejected by Row Level Security (see data/linen-data.ts's
  * friendlyWriteError for that safety net). Identical to the web
  * dashboard's copy of this same file - same table, same policies.
  */
 
 import { supabase } from '@/lib/supabase';
 
-export type UserRole = 'staff' | 'viewer';
+export type UserRole = 'staff' | 'viewer' | 'admin';
 
 export async function getUserRole(userId: string): Promise<UserRole> {
   const { data, error } = await supabase
@@ -33,5 +33,7 @@ export async function getUserRole(userId: string): Promise<UserRole> {
     return 'viewer';
   }
 
-  return data.role === 'staff' ? 'staff' : 'viewer';
+  if (data.role === 'admin') return 'admin';
+  if (data.role === 'staff') return 'staff';
+  return 'viewer';
 }

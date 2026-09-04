@@ -9,14 +9,16 @@
  * Users), since a management dashboard shouldn't let just anyone
  * register themselves an account.
  *
- * Also tracks `role`/`isStaff` - every account can view everything,
- * but only a `staff` account can register items, run the exit
- * scanner, or dismiss alerts (see the mobile app's README, "Role-
- * based permissions"). Pages use `isStaff` to show a plain-language
- * notice and disable those controls up front, instead of a viewer
- * only finding out via a raw Row Level Security error after clicking
- * something (data/linen-data.ts's friendlyWriteError is the fallback
- * for anywhere that isn't checked yet).
+ * Also tracks `role`/`isStaff`/`isAdmin` - every account can view
+ * everything, but only `staff` (or `admin`, a strict superset) can
+ * register items, run the exit scanner, or dismiss alerts, and only
+ * `admin` can assign roles to other accounts (see the mobile app's
+ * README, "Role-based permissions" and "Admin role"). Pages use
+ * `isStaff`/`isAdmin` to show a plain-language notice and disable
+ * those controls up front, instead of a viewer only finding out via a
+ * raw Row Level Security error after clicking something
+ * (data/linen-data.ts's friendlyWriteError is the fallback for
+ * anywhere that isn't checked yet).
  */
 
 'use client';
@@ -34,6 +36,7 @@ interface AuthContextValue {
   role: UserRole | null;
   roleLoading: boolean;
   isStaff: boolean;
+  isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -100,7 +103,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       role,
       roleLoading,
-      isStaff: role === 'staff',
+      // Admin is a strict superset of staff - every staff-gated
+      // control also has to work for an admin, without needing a
+      // separate 'staff' row for the same account.
+      isStaff: role === 'staff' || role === 'admin',
+      isAdmin: role === 'admin',
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;

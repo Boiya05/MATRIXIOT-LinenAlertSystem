@@ -14,7 +14,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 
-const LINKS = [
+const BASE_LINKS = [
   { href: '/', label: 'Dashboard' },
   { href: '/scan', label: 'Scan' },
   { href: '/inventory', label: 'Inventory' },
@@ -43,8 +43,12 @@ function ThemeToggle() {
 
 export function Nav() {
   const pathname = usePathname();
-  const { user, signOut } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
   const initial = user?.email?.[0]?.toUpperCase() ?? '?';
+  // Admin is only shown to admins - not a security boundary (the page
+  // itself and the RLS behind it are), just no reason to show a link
+  // to a screen someone can't do anything on.
+  const links = isAdmin ? [...BASE_LINKS, { href: '/admin', label: 'Admin' }] : BASE_LINKS;
 
   return (
     <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/75 shadow-sm shadow-slate-200/40 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/75 dark:shadow-black/20">
@@ -66,7 +70,7 @@ export function Nav() {
             </span>
           </Link>
           <nav className="flex gap-1">
-            {LINKS.map((link) => {
+            {links.map((link) => {
               const active = pathname === link.href;
               return (
                 <Link
