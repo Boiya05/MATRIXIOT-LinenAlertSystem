@@ -420,13 +420,37 @@ alter table user_roles
 -- exposed via the public API at all, by design).
 alter table user_roles add column if not exists email text;
 
+-- "Am I an admin?" wrapped in its own SECURITY DEFINER function,
+-- rather than a raw subquery inline in the policy below - a policy on
+-- user_roles that queries user_roles directly (even to check the
+-- caller's own admin status) causes Postgres to re-evaluate that same
+-- policy for every row the subquery touches, which re-triggers the
+-- subquery, forever - "infinite recursion detected in policy for
+-- relation user_roles", surfaced to the app as a 500 on every read
+-- (which the app's error handling then silently downgrades to
+-- 'viewer' for everyone, not just admins - confirmed the hard way).
+-- SECURITY DEFINER breaks the cycle: this function's own query runs
+-- with the function owner's privileges, bypassing RLS entirely
+-- instead of re-triggering the policy that calls it.
+create or replace function is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (select 1 from user_roles where user_id = auth.uid() and role = 'admin');
+$$;
+
+grant execute on function is_admin() to authenticated;
+
 -- Admins can see every row, not just their own - needed to list
 -- current role assignments. The existing "Users can view their own
 -- role" policy is untouched - Postgres combines multiple permissive
 -- SELECT policies with OR, so this adds to it rather than replacing it.
 create policy "Admins can view all roles"
   on user_roles for select
-  using (exists (select 1 from user_roles ur where ur.user_id = auth.uid() and ur.role = 'admin'));
+  using (is_admin());
 
 -- The one function that actually assigns a role. SECURITY DEFINER so
 -- it can resolve an email against auth.users on the server side (never
