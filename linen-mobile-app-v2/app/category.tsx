@@ -3,13 +3,20 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EditItemModal } from '@/components/edit-item-modal';
 import { PressableScale } from '@/components/pressable-scale';
 import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
-import { deleteLinenItem, getItemsByStatusAndType, logItemEvent, type LinenStatus } from '@/data/linen-data';
+import {
+  deleteLinenItem,
+  getItemsByStatusAndType,
+  logItemEvent,
+  type LinenItem,
+  type LinenStatus,
+} from '@/data/linen-data';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHasLoadedOnce } from '@/hooks/use-has-loaded-once';
 import { useLinenItems } from '@/hooks/use-linen-items';
@@ -20,7 +27,7 @@ export default function CategoryScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const border = useThemeColor({}, 'border');
-  const { isStaff } = useAuth();
+  const { isStaff, isAdmin } = useAuth();
 
   const { items: allItems, loading, error, refresh } = useLinenItems();
   const items = useMemo(
@@ -31,6 +38,7 @@ export default function CategoryScreen() {
   // of already-visible items just uses the small header spinner instead.
   const hasLoadedOnce = useHasLoadedOnce(loading);
   const showSkeleton = !hasLoadedOnce;
+  const [editingItem, setEditingItem] = useState<LinenItem | null>(null);
 
   // Bulk delete - staff only (see this app's README, "Role-based
   // permissions"). Mirrors the web dashboard's Inventory page, adapted
@@ -182,18 +190,36 @@ export default function CategoryScreen() {
                     color={isSelected ? colors.tint : colors.textSecondary}
                   />
                 )}
-                <ThemedText type="defaultSemiBold">{item.tagId}</ThemedText>
+                <ThemedText type="defaultSemiBold" style={{ flex: 1 }}>
+                  {item.tagId}
+                </ThemedText>
+                {!selectMode && isAdmin && (
+                  <IconSymbol name="pencil" size={15} color={colors.textSecondary} />
+                )}
               </View>
             );
-            return selectMode ? (
-              <PressableScale onPress={() => toggleOne(item.tagId)}>{row}</PressableScale>
-            ) : (
-              row
-            );
+            if (selectMode) {
+              return <PressableScale onPress={() => toggleOne(item.tagId)}>{row}</PressableScale>;
+            }
+            if (isAdmin) {
+              return <PressableScale onPress={() => setEditingItem(item)}>{row}</PressableScale>;
+            }
+            return row;
           }}
           ListEmptyComponent={
             <ThemedText style={{ color: colors.textSecondary }}>No items found.</ThemedText>
           }
+        />
+      )}
+
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => {
+            setEditingItem(null);
+            refresh();
+          }}
         />
       )}
     </SafeAreaView>

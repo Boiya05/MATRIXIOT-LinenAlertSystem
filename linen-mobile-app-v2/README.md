@@ -564,6 +564,67 @@ your own account, nobody is left who can call `admin_set_user_role()`
 to fix it; you'd be back to the manual SQL bootstrap above. The Admin
 screen warns before letting you do this to your own account.
 
+## Editing a registered item (admin only)
+
+Fixes a mistake on an already-registered item - wrong guest name, wrong
+room, a typo'd item type - without deleting and re-registering it. The
+desktop app has always had this (its Edit Selected button); this adds
+the same thing to the web dashboard's Inventory page and this app's
+Room/Category screens (tap an item when signed in as admin), gated to
+admin accounts only. Tag ID and status aren't editable here - status
+has its own dedicated controls elsewhere, and the tag ID is the item's
+permanent identity, same as the desktop app.
+
+This is *not* enforced by a plain RLS policy on `linen_items`, on
+purpose: `staff` accounts already have full UPDATE on that table (see
+"Role-based permissions" above), because the ordinary scan/assign flow
+needs it - marking an item "In Use" on entry, or updating its
+guest/room on assign, are both plain updates too. Restricting the
+table's UPDATE policy to admin-only would break that everyday flow for
+every staff account. Instead, this one action goes through its own
+`SECURITY DEFINER` function, gated by the same `is_admin()` check the
+Admin role above already uses - so editing details is admin-only
+regardless of what the table's general update policy allows for staff.
+
+Run once in the Supabase SQL Editor (after **Admin role** above -
+this uses its `is_admin()` function):
+
+```sql
+create or replace function admin_update_linen_item(
+  p_tag_id text,
+  p_customer_name text,
+  p_room_number text,
+  p_item_type text
+)
+returns table(success boolean, message text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    return query select false, 'Only an admin can edit a registered item.';
+    return;
+  end if;
+
+  update linen_items
+  set customer_name = p_customer_name,
+      room_number = p_room_number,
+      item_type = p_item_type
+  where tag_id = p_tag_id;
+
+  if not found then
+    return query select false, 'No item registered under that tag.';
+    return;
+  end if;
+
+  return query select true, 'Item updated.';
+end;
+$$;
+
+grant execute on function admin_update_linen_item(text, text, text, text) to authenticated;
+```
+
 ## Audit trail (who did what, and when)
 
 Before this, nothing recorded *who* registered an item, changed its
@@ -754,7 +815,11 @@ real USB reader mode via Android's USB Host API - all protected by
 Supabase Row Level Security now that real accounts exist, and
 role-gated so only `staff` accounts can write, both at the RLS layer
 and proactively in the UI (disabled controls + a notice for `viewer`
-accounts, matching the web dashboard). A flagged exit-scan also
+accounts, matching the web dashboard). An Admin screen lets `admin`
+accounts assign roles by email, and admin accounts can also fix a
+mistake on an already-registered item (guest, room, item type) by
+tapping it on the Room/Category screens - see **Admin role** and
+**Editing a registered item (admin only)** above. A flagged exit-scan also
 relays a Telegram alert through the web dashboard - see **Telegram
 alerts** above. Every registration, edit, status change, deletion,
 and alert trigger/dismissal across all three apps also writes to an

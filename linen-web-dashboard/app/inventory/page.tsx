@@ -5,7 +5,13 @@ import { useMemo, useState } from 'react';
 import { Nav } from '@/components/nav';
 import { Protected } from '@/components/protected';
 import { useAuth } from '@/contexts/auth-context';
-import { deleteLinenItem, logItemEvent, type LinenItem, type LinenStatus } from '@/data/linen-data';
+import {
+  deleteLinenItem,
+  logItemEvent,
+  updateLinenItemDetails,
+  type LinenItem,
+  type LinenStatus,
+} from '@/data/linen-data';
 import { useLinenItems } from '@/hooks/use-linen-items';
 
 const STATUS_FILTERS: (LinenStatus | 'All')[] = ['All', 'In Use', 'Laundry', 'Storage'];
@@ -23,13 +29,14 @@ const STATUS_DOTS: Record<LinenStatus, string> = {
 };
 
 export default function InventoryPage() {
-  const { isStaff } = useAuth();
+  const { isStaff, isAdmin } = useAuth();
   const { items, loading, error, reload } = useLinenItems();
   const [statusFilter, setStatusFilter] = useState<LinenStatus | 'All'>('All');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<LinenItem | null>(null);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -227,20 +234,21 @@ export default function InventoryPage() {
                   <th className="px-5 py-3 font-medium">Room</th>
                   <th className="px-5 py-3 font-medium">Item type</th>
                   <th className="px-5 py-3 font-medium">Status</th>
+                  {isAdmin && <th className="w-10 px-5 py-3" />}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   [0, 1, 2, 3, 4].map((i) => (
                     <tr key={i} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
-                      <td className="px-5 py-3.5" colSpan={6}>
+                      <td className="px-5 py-3.5" colSpan={isAdmin ? 7 : 6}>
                         <span className="block h-4 w-full animate-shimmer rounded-md" />
                       </td>
                     </tr>
                   ))
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-500">
+                    <td colSpan={isAdmin ? 7 : 6} className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-500">
                       No items match.
                     </td>
                   </tr>
@@ -286,6 +294,26 @@ export default function InventoryPage() {
                             {item.status}
                           </span>
                         </td>
+                        {isAdmin && (
+                          <td className="px-5 py-3">
+                            <button
+                              onClick={() => setEditingItem(item)}
+                              aria-label={`Edit ${item.tagId}`}
+                              title="Edit details"
+                              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+                                <path
+                                  d="M16.5 3.5l4 4L8 20H4v-4L16.5 3.5z"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -298,6 +326,147 @@ export default function InventoryPage() {
           {loading ? '' : `${filtered.length} of ${items.length} item(s)`}
         </p>
       </main>
+
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => {
+            setEditingItem(null);
+            reload();
+          }}
+        />
+      )}
     </Protected>
+  );
+}
+
+/**
+ * Fix a mistake on an already-registered item - admin only (see
+ * "Editing a registered item (admin only)" in the mobile app's README
+ * for why this goes through a dedicated RPC rather than a plain
+ * table update). Tag ID and status aren't editable here, matching the
+ * desktop app's Edit dialog - status has its own dedicated controls
+ * elsewhere, and the tag ID is the item's permanent identity.
+ */
+function EditItemModal({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item: LinenItem;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [customerName, setCustomerName] = useState(item.customerName);
+  const [roomNumber, setRoomNumber] = useState(item.roomNumber);
+  const [itemType, setItemType] = useState(item.itemType);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    const trimmedCustomer = customerName.trim();
+    const trimmedRoom = roomNumber.trim();
+    const trimmedType = itemType.trim();
+    if (!trimmedCustomer || !trimmedRoom || !trimmedType) {
+      setError('Please fill in guest, room, and item type.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await updateLinenItemDetails(item.tagId, {
+        customerName: trimmedCustomer,
+        roomNumber: trimmedRoom,
+        itemType: trimmedType,
+      });
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
+
+      // Note what actually changed, so the audit trail says something
+      // more useful than just "edited" - mirrors the desktop app's
+      // _on_edit_selected().
+      const changes: string[] = [];
+      if (trimmedCustomer !== item.customerName) changes.push(`guest "${item.customerName}" -> "${trimmedCustomer}"`);
+      if (trimmedRoom !== item.roomNumber) changes.push(`room "${item.roomNumber}" -> "${trimmedRoom}"`);
+      if (trimmedType !== item.itemType) changes.push(`item type "${item.itemType}" -> "${trimmedType}"`);
+
+      logItemEvent({
+        tagId: item.tagId,
+        eventType: 'edited',
+        newStatus: item.status,
+        customerName: trimmedCustomer,
+        roomNumber: trimmedRoom,
+        detail: changes.length > 0 ? changes.join('; ') : null,
+      }).catch((err) => console.warn('Failed to log audit event:', err));
+
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Edit item</h2>
+        <p className="mt-0.5 font-mono text-xs text-slate-400 dark:text-slate-500">{item.tagId} (fixed)</p>
+
+        <div className="mt-4 flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Guest
+            <input
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Room
+            <input
+              value={roomNumber}
+              onChange={(e) => setRoomNumber(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Item type
+            <input
+              value={itemType}
+              onChange={(e) => setItemType(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            />
+          </label>
+        </div>
+
+        {error && (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-teal-600 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm shadow-teal-600/30 transition-all hover:bg-teal-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

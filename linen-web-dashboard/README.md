@@ -277,26 +277,26 @@ already happened by the time this is called.
 ## Current status
 
 Working: login, live dashboard stats, live theft alerts with dismiss,
-searchable/filterable inventory with bulk delete, alert history, the
-audit trail (Activity), an Admin page for assigning viewer/staff/admin
-access by email (see **Admin role** in the mobile app's README), and
-item registration (optional guest/room, real USB hardware via a manual
-field or Web Serial, local-cache duplicate checking, and recovery from
-merged/concatenated reads - see **Real hardware from the browser**
-above) + a separate Assign to guest step + exit-scan theft detection
-(which now also relays a Telegram alert, the same as the desktop app -
-see **Telegram alerts** above) - all reading and writing the same
-Supabase project as the desktop and mobile apps,
-protected by the same Row Level Security policies. Verified against
-live data before being committed: a full register → assign → exit-scan
-→ theft-alert-logged pass through the real UI, using a throwaway test
-account and test rows that were deleted afterward.
+searchable/filterable inventory with bulk delete and (admin only) an
+Edit action for fixing a mistake on an already-registered item - see
+**Editing a registered item (admin only)** in the mobile app's README
+- alert history, the audit trail (Activity), an Admin page for
+assigning viewer/staff/admin access by email (see **Admin role** in
+the mobile app's README), and item registration (optional guest/room,
+real USB hardware via a manual field or Web Serial, local-cache
+duplicate checking, and recovery from merged/concatenated reads - see
+**Real hardware from the browser** above) + a separate Assign to guest
+step + exit-scan theft detection (which now also relays a Telegram
+alert, the same as the desktop app - see **Telegram alerts** above) -
+all reading and writing the same Supabase project as the desktop and
+mobile apps, protected by the same Row Level Security policies.
+Verified against live data before being committed: a full register →
+assign → exit-scan → theft-alert-logged pass through the real UI,
+using a throwaway test account and test rows that were deleted
+afterward.
 
 Not yet built:
 - Multi-property support (see the root `ARCHITECTURE.md` for the
   `organization_id` design this would use)
-- Editing an already-registered item's details (status changes and
-  new registrations are covered; fixing a mistake on an existing item
-  still needs the desktop app's Edit dialog)
 - The real reader protocol itself - `hardware/web-serial-reader.ts`'s
   two placeholder methods, same blocker as the desktop app

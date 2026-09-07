@@ -32,6 +32,7 @@ const MAPPING = {
   'qrcode.viewfinder': 'qr-code-scanner',
   'checkmark.circle.fill': 'check-circle',
   circle: 'radio-button-unchecked',
+  pencil: 'edit',
 } as IconMapping;
 
 /**

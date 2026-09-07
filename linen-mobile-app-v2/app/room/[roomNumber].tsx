@@ -1,13 +1,16 @@
 import { useLocalSearchParams, Stack } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EditItemModal } from '@/components/edit-item-modal';
+import { PressableScale } from '@/components/pressable-scale';
 import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import { getItemsForRoom } from '@/data/linen-data';
+import { useAuth } from '@/contexts/auth-context';
+import { getItemsForRoom, type LinenItem } from '@/data/linen-data';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHasLoadedOnce } from '@/hooks/use-has-loaded-once';
 import { useLinenItems } from '@/hooks/use-linen-items';
@@ -18,6 +21,7 @@ export default function RoomDetailScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const border = useThemeColor({}, 'border');
+  const { isAdmin } = useAuth();
 
   const { items: allItems, loading, error, refresh } = useLinenItems();
   const items = useMemo(() => getItemsForRoom(allItems, roomNumber), [allItems, roomNumber]);
@@ -26,6 +30,7 @@ export default function RoomDetailScreen() {
   // "No linen in this room" before the initial fetch has even resolved.
   const hasLoadedOnce = useHasLoadedOnce(loading);
   const showSkeleton = !hasLoadedOnce;
+  const [editingItem, setEditingItem] = useState<LinenItem | null>(null);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
@@ -57,26 +62,45 @@ export default function RoomDetailScreen() {
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
-          renderItem={({ item }) => (
-            <View style={[styles.itemCard, { backgroundColor: colors.cardBackground, borderColor: border }]}>
-              <View style={styles.itemTextWrap}>
-                <ThemedText type="defaultSemiBold">{item.itemType}</ThemedText>
-                <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
-                  Tag {item.tagId}
-                </ThemedText>
+          renderItem={({ item }) => {
+            const card = (
+              <View style={[styles.itemCard, { backgroundColor: colors.cardBackground, borderColor: border }]}>
+                <View style={styles.itemTextWrap}>
+                  <ThemedText type="defaultSemiBold">{item.itemType}</ThemedText>
+                  <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>
+                    Tag {item.tagId}
+                  </ThemedText>
+                </View>
+                <View style={[styles.statusPill, { backgroundColor: `${colors.statusInUse}22` }]}>
+                  <ThemedText style={[styles.statusPillText, { color: colors.statusInUse }]}>
+                    {item.status}
+                  </ThemedText>
+                </View>
+                {isAdmin && <IconSymbol name="pencil" size={15} color={colors.textSecondary} />}
               </View>
-              <View style={[styles.statusPill, { backgroundColor: `${colors.statusInUse}22` }]}>
-                <ThemedText style={[styles.statusPillText, { color: colors.statusInUse }]}>
-                  {item.status}
-                </ThemedText>
-              </View>
-            </View>
-          )}
+            );
+            return isAdmin ? (
+              <PressableScale onPress={() => setEditingItem(item)}>{card}</PressableScale>
+            ) : (
+              card
+            );
+          }}
           ListEmptyComponent={
             <ThemedText style={{ color: colors.textSecondary }}>
               No linen currently in use in this room.
             </ThemedText>
           }
+        />
+      )}
+
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => {
+            setEditingItem(null);
+            refresh();
+          }}
         />
       )}
     </SafeAreaView>

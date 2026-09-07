@@ -223,6 +223,41 @@ export async function saveLinenItem(item: LinenItem): Promise<void> {
   }
 }
 
+export interface UpdateItemResult {
+  success: boolean;
+  message: string;
+}
+
+/**
+ * Fix a mistake on an already-registered item's details (customer
+ * name, room number, item type) - admin only. Unlike saveLinenItem()
+ * (a plain upsert any staff/admin account can already do for the
+ * ordinary register/status-change flow), this goes through the
+ * admin_update_linen_item() RPC, which checks is_admin() on the server
+ * before writing - see "Editing a registered item (admin only)" in the
+ * mobile app's README for why this can't just be a table-level RLS
+ * policy (staff already needs plain UPDATE on linen_items for the scan
+ * flow, so restricting the table itself would break that).
+ */
+export async function updateLinenItemDetails(
+  tagId: string,
+  details: { customerName: string; roomNumber: string; itemType: string }
+): Promise<UpdateItemResult> {
+  const { data, error } = await supabase.rpc('admin_update_linen_item', {
+    p_tag_id: tagId,
+    p_customer_name: details.customerName,
+    p_room_number: details.roomNumber,
+    p_item_type: details.itemType,
+  });
+
+  if (error) {
+    throw friendlyWriteError('update item', error);
+  }
+
+  const result = data?.[0];
+  return result ? { success: result.success, message: result.message } : { success: false, message: 'No response from the server.' };
+}
+
 /**
  * Delete a linen item by its tag ID - mirrors the desktop app's
  * database.delete_linen_item(). Used by the Inventory page's bulk
