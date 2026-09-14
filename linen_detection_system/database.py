@@ -29,6 +29,7 @@ as telegram_config.json.
 import json
 import os
 import sys
+import threading
 
 from supabase import create_client
 
@@ -37,6 +38,23 @@ from models import LinenItem
 TABLE_NAME = "linen_items"
 ALERTS_TABLE_NAME = "theft_alerts"
 EVENTS_TABLE_NAME = "linen_item_events"
+
+# Guards every actual network call made through the shared client below
+# (see _execute()). alarm.py's trigger_alarm() fires Telegram, WhatsApp,
+# and Supabase logging on separate daemon threads at the same time -
+# on purpose, so a slow network call can't delay the on-screen alarm
+# popup - and two of those threads hitting this client's connection
+# pool at the exact same instant was observed to raise a spurious
+# "[WinError 10035] A non-blocking socket operation could not be
+# completed immediately" on Windows. Confirmed harmless in the sense
+# that the underlying HTTP request had already gone through by the
+# time this fired (the row was actually written both times it was
+# seen) - but it printed a scary, misleading "Failed to log ..."
+# message on every theft alert. This lock serializes actual query
+# execution so no two threads touch the client at once; it doesn't
+# change any single call's behavior, since none of these queries were
+# ever slow enough for serializing them to be noticeable.
+_client_lock = threading.Lock()
 
 
 def _get_base_dir():
@@ -86,9 +104,25 @@ def get_client():
     """Return a connected Supabase client, creating it on first use."""
     global _client
     if _client is None:
-        config = _load_supabase_config()
-        _client = create_client(config["url"], config["service_role_key"])
+        with _client_lock:
+            # Re-check inside the lock - if two threads both saw
+            # _client as None and both reached here, only the first
+            # should actually create it.
+            if _client is None:
+                config = _load_supabase_config()
+                _client = create_client(config["url"], config["service_role_key"])
     return _client
+
+
+def _execute(query):
+    """
+    Run a Supabase query/command built off get_client(), serialized
+    against every other call through this module - see _client_lock
+    above for why. Every function below routes its query through this
+    instead of calling .execute() directly.
+    """
+    with _client_lock:
+        return query.execute()
 
 
 def initialize_database():
@@ -101,7 +135,7 @@ def initialize_database():
     lightweight check so connection problems are caught early, with a
     clear error, instead of surfacing confusingly later.
     """
-    get_client().table(TABLE_NAME).select("tag_id").limit(1).execute()
+    _execute(get_client().table(TABLE_NAME).select("tag_id").limit(1))
 
 
 def get_all_items(sort_by="tag_id"):
@@ -120,7 +154,7 @@ def get_all_items(sort_by="tag_id"):
     if sort_by not in ("tag_id", "customer_name", "item_type"):
         sort_by = "tag_id"
 
-    response = get_client().table(TABLE_NAME).select("*").order(sort_by).execute()
+    response = _execute(get_client().table(TABLE_NAME).select("*").order(sort_by))
     return [LinenItem(**row) for row in response.data]
 
 
@@ -132,7 +166,7 @@ def get_item_by_tag(tag_id):
         LinenItem or None: The matching item, or None if no item has
         been registered under this tag.
     """
-    response = get_client().table(TABLE_NAME).select("*").eq("tag_id", tag_id).execute()
+    response = _execute(get_client().table(TABLE_NAME).select("*").eq("tag_id", tag_id))
     return LinenItem(**response.data[0]) if response.data else None
 
 
@@ -153,7 +187,7 @@ def get_items_by_tags(tag_ids):
     if not tag_ids:
         return []
 
-    response = get_client().table(TABLE_NAME).select("*").in_("tag_id", tag_ids).execute()
+    response = _execute(get_client().table(TABLE_NAME).select("*").in_("tag_id", tag_ids))
     return [LinenItem(**row) for row in response.data]
 
 
@@ -163,7 +197,7 @@ def delete_linen_item(tag_id):
 
     Does nothing if no item exists under that tag ID.
     """
-    get_client().table(TABLE_NAME).delete().eq("tag_id", tag_id).execute()
+    _execute(get_client().table(TABLE_NAME).delete().eq("tag_id", tag_id))
 
 
 def update_item_status(tag_id, status):
@@ -173,7 +207,7 @@ def update_item_status(tag_id, status):
 
     Does nothing if no item exists under that tag ID.
     """
-    get_client().table(TABLE_NAME).update({"status": status}).eq("tag_id", tag_id).execute()
+    _execute(get_client().table(TABLE_NAME).update({"status": status}).eq("tag_id", tag_id))
 
 
 def save_linen_item(item: LinenItem):
@@ -183,16 +217,18 @@ def save_linen_item(item: LinenItem):
     If the tag_id already exists, its record is updated with the new
     details (including status) instead of creating a duplicate row.
     """
-    get_client().table(TABLE_NAME).upsert(
-        {
-            "tag_id": item.tag_id,
-            "customer_name": item.customer_name,
-            "room_number": item.room_number,
-            "item_type": item.item_type,
-            "status": item.status,
-        },
-        on_conflict="tag_id",
-    ).execute()
+    _execute(
+        get_client().table(TABLE_NAME).upsert(
+            {
+                "tag_id": item.tag_id,
+                "customer_name": item.customer_name,
+                "room_number": item.room_number,
+                "item_type": item.item_type,
+                "status": item.status,
+            },
+            on_conflict="tag_id",
+        )
+    )
 
 
 def log_theft_alert(tag_id, item=None, message=""):
@@ -208,15 +244,17 @@ def log_theft_alert(tag_id, item=None, message=""):
             database at all, so "Unknown" is recorded instead.
         message (str): The human-readable alert message shown to the user.
     """
-    get_client().table(ALERTS_TABLE_NAME).insert(
-        {
-            "tag_id": tag_id,
-            "item_type": item.item_type if item else "Unknown",
-            "room_number": item.room_number if item else "Unknown",
-            "customer_name": item.customer_name if item else "Unknown",
-            "message": message,
-        }
-    ).execute()
+    _execute(
+        get_client().table(ALERTS_TABLE_NAME).insert(
+            {
+                "tag_id": tag_id,
+                "item_type": item.item_type if item else "Unknown",
+                "room_number": item.room_number if item else "Unknown",
+                "customer_name": item.customer_name if item else "Unknown",
+                "message": message,
+            }
+        )
+    )
 
 
 def has_active_alert(tag_id):
@@ -231,14 +269,13 @@ def has_active_alert(tag_id):
     Returns:
         bool: True if an undismissed alert already exists for this tag.
     """
-    response = (
+    response = _execute(
         get_client()
         .table(ALERTS_TABLE_NAME)
         .select("id")
         .eq("tag_id", tag_id)
         .eq("dismissed", False)
         .limit(1)
-        .execute()
     )
     return bool(response.data)
 
@@ -284,16 +321,18 @@ def log_item_event(
     try/except there), the same as log_theft_alert: a failure to write
     an audit row should never block or crash the action it describes.
     """
-    get_client().table(EVENTS_TABLE_NAME).insert(
-        {
-            "tag_id": tag_id,
-            "event_type": event_type,
-            "old_status": old_status,
-            "new_status": new_status,
-            "customer_name": customer_name,
-            "room_number": room_number,
-            "detail": detail,
-            "actor_label": actor_label,
-            "source_app": "desktop",
-        }
-    ).execute()
+    _execute(
+        get_client().table(EVENTS_TABLE_NAME).insert(
+            {
+                "tag_id": tag_id,
+                "event_type": event_type,
+                "old_status": old_status,
+                "new_status": new_status,
+                "customer_name": customer_name,
+                "room_number": room_number,
+                "detail": detail,
+                "actor_label": actor_label,
+                "source_app": "desktop",
+            }
+        )
+    )
