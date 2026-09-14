@@ -54,8 +54,22 @@ class LinenApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Linen RFID Detection System")
-        self.root.geometry("700x920")
-        self.root.minsize(600, 700)
+
+        # The window used to default to a hardcoded 700x920 - taller
+        # than the usable screen area on a smaller/laptop display (or
+        # one that's scaled up), which pushed the bottom of the window
+        # - including the Saved Items table and its scrollbar - off
+        # screen entirely, with no way to reach it. Cap the window to
+        # whatever actually fits on screen instead, and center it, so
+        # it always opens fully visible regardless of display size.
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = min(700, screen_width - 40)
+        window_height = min(920, screen_height - 80)  # leaves room for the taskbar
+        x = max(0, (screen_width - window_width) // 2)
+        y = max(0, (screen_height - window_height) // 2)
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.root.minsize(min(600, window_width), min(500, window_height))
 
         # Items that have been scanned but not yet assigned to a
         # customer/room. Each entry is a (tag_id, item_type) tuple.
