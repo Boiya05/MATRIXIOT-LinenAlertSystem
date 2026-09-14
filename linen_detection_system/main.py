@@ -301,14 +301,26 @@ class LinenApp:
         # Reload the table (in the new order) whenever the sort choice changes.
         self.sort_by_combo.bind("<<ComboboxSelected>>", lambda event: self._refresh_item_table())
 
+        # A plain Treeview has no way to scroll to rows that don't fit
+        # in the visible window - with enough saved items (or a small
+        # enough window) there was no way to reach the rest at all.
+        # Wrapping it with a Frame + Scrollbar fixes that.
+        tree_frame = ttk.Frame(self.root)
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+
         columns = ("tag_id", "customer_name", "room_number", "item_type", "status")
-        self.tree = ttk.Treeview(self.root, columns=columns, show="headings", selectmode="browse")
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="browse")
         self.tree.heading("tag_id", text="Tag ID")
         self.tree.heading("customer_name", text="Customer")
         self.tree.heading("room_number", text="Room")
         self.tree.heading("item_type", text="Item Type")
         self.tree.heading("status", text="Status")
-        self.tree.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+
+        tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=tree_scrollbar.set)
+
+        self.tree.pack(side="left", fill="both", expand=True)
+        tree_scrollbar.pack(side="right", fill="y")
 
         # --- Buttons that act on whichever row is selected above ---
         actions_frame = ttk.Frame(self.root, padding=10)
