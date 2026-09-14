@@ -125,6 +125,54 @@ class LinenApp:
     def _build_widgets(self):
         """Create and arrange all the widgets in the window."""
 
+        # Everything below lives inside a scrollable canvas, not
+        # directly in self.root - the window is capped to fit the
+        # screen (see __init__), but on a small enough screen even
+        # that capped size isn't tall enough to show every section
+        # (Operator, Scan, Assign to Guest, Exit Scan, Saved Items,
+        # and the action buttons) at once. Without this, everything
+        # past whatever fit would be simply unreachable - there'd be
+        # no way to scroll the window itself, only the Saved Items
+        # table had its own internal scrollbar (see tree_frame below).
+        # This wraps the whole form so the entire window can scroll,
+        # by mouse wheel or by dragging the scrollbar, regardless of
+        # how small the screen is.
+        outer_canvas = tk.Canvas(self.root, highlightthickness=0)
+        outer_scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=outer_canvas.yview)
+        outer_canvas.configure(yscrollcommand=outer_scrollbar.set)
+        outer_canvas.pack(side="left", fill="both", expand=True)
+        outer_scrollbar.pack(side="right", fill="y")
+
+        content = ttk.Frame(outer_canvas)
+        content_window = outer_canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _on_content_resize(event):
+            # Grow the scrollable region to fit whatever's currently
+            # in the form, so the scrollbar's range always matches.
+            outer_canvas.configure(scrollregion=outer_canvas.bbox("all"))
+
+        content.bind("<Configure>", _on_content_resize)
+
+        def _on_canvas_resize(event):
+            # Stretch the inner frame to the canvas's actual width, so
+            # widgets packed with fill="x"/"both" still reach the full
+            # visible width instead of staying at their minimum size.
+            outer_canvas.itemconfig(content_window, width=event.width)
+
+        outer_canvas.bind("<Configure>", _on_canvas_resize)
+
+        def _on_mousewheel(event):
+            # Windows/Mac deliver a signed event.delta in multiples of
+            # 120; Linux uses Button-4/5 instead (bound separately
+            # below). bind_all so the wheel works anywhere over the
+            # window, not just when the pointer is directly over the
+            # canvas.
+            outer_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        outer_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        outer_canvas.bind_all("<Button-4>", lambda event: outer_canvas.yview_scroll(-1, "units"))
+        outer_canvas.bind_all("<Button-5>", lambda event: outer_canvas.yview_scroll(1, "units"))
+
         # --- Operator: who's using this terminal right now ---
         # This app has no login screen (see database.py's module
         # docstring - it authenticates as service_role, not as a
@@ -134,14 +182,14 @@ class LinenApp:
         # action taken from this window in the linen_item_events audit
         # trail (see _log_event() below) - left blank, those events
         # just record no actor rather than a guess.
-        operator_frame = ttk.Frame(self.root, padding=(10, 8, 10, 0))
+        operator_frame = ttk.Frame(content, padding=(10, 8, 10, 0))
         operator_frame.pack(fill="x")
         ttk.Label(operator_frame, text="Operator Name (for the audit trail):").pack(side="left")
         self.operator_entry = ttk.Entry(operator_frame, width=25)
         self.operator_entry.pack(side="left", padx=(6, 0))
 
         # --- Scan section: real RFID reader input ---
-        scan_frame = ttk.Frame(self.root, padding=10)
+        scan_frame = ttk.Frame(content, padding=10)
         scan_frame.pack(fill="x")
 
         # A real UHF tag only carries a Tag ID - it doesn't say what
@@ -170,7 +218,7 @@ class LinenApp:
         # needed once a real reader was in the picture (a tag sitting
         # in range gets read - and would get re-added - many times a
         # second otherwise).
-        scan_frame2 = ttk.Frame(self.root, padding=(10, 0, 10, 10))
+        scan_frame2 = ttk.Frame(content, padding=(10, 0, 10, 10))
         scan_frame2.pack(fill="x")
         ttk.Label(scan_frame2, text="Scan / type Tag ID:").pack(side="left")
         self.entry_tag_entry = ttk.Entry(scan_frame2, width=28)
@@ -183,18 +231,18 @@ class LinenApp:
         # reader flooding scans during a batch registration, seeing
         # the number climb is the main feedback that scanning is
         # actually being captured (see _update_pending_count()).
-        self.pending_count_label = ttk.Label(self.root, text="Pending Items: 0 scanned")
+        self.pending_count_label = ttk.Label(content, text="Pending Items: 0 scanned")
         self.pending_count_label.pack(anchor="w", padx=10)
         pending_columns = ("tag_id", "item_type")
         self.pending_tree = ttk.Treeview(
-            self.root, columns=pending_columns, show="headings", height=5, selectmode="browse"
+            content, columns=pending_columns, show="headings", height=5, selectmode="browse"
         )
         self.pending_tree.heading("tag_id", text="Tag ID")
         self.pending_tree.heading("item_type", text="Item Type")
         self.pending_tree.pack(fill="x", padx=10, pady=(0, 5))
 
         remove_pending_button = ttk.Button(
-            self.root, text="Remove Selected Pending Item", command=self._on_remove_pending
+            content, text="Remove Selected Pending Item", command=self._on_remove_pending
         )
         remove_pending_button.pack(anchor="e", padx=10, pady=(0, 10))
 
@@ -203,7 +251,7 @@ class LinenApp:
         # blank to register the pending tags as unassigned stock (see
         # _on_assign()'s docstring), or fill them in to also assign a
         # guest in this same step.
-        assign_frame = ttk.Frame(self.root, padding=10)
+        assign_frame = ttk.Frame(content, padding=10)
         assign_frame.pack(fill="x")
 
         ttk.Label(assign_frame, text="Customer Name (optional):").grid(
@@ -227,7 +275,7 @@ class LinenApp:
         #     reassigned to a different guest than before) - same
         #     batch pattern as the Save section's pending list. ---
         assign_guest_frame = ttk.LabelFrame(
-            self.root, text="Assign to Guest (already-registered tags)", padding=10
+            content, text="Assign to Guest (already-registered tags)", padding=10
         )
         assign_guest_frame.pack(fill="x", padx=10, pady=(0, 10))
 
@@ -276,14 +324,14 @@ class LinenApp:
         assign_to_guest_button.pack(pady=(8, 0))
 
         # --- Status line: shows the result of the last action ---
-        self.status_label = ttk.Label(self.root, text="", foreground="green")
+        self.status_label = ttk.Label(content, text="", foreground="green")
         self.status_label.pack(pady=(0, 5))
 
-        ttk.Separator(self.root, orient="horizontal").pack(fill="x", padx=10)
+        ttk.Separator(content, orient="horizontal").pack(fill="x", padx=10)
 
         # --- Exit scanner section: simulates the RFID reader placed at
         #     the exit. Any tag scanned here is treated as a theft. ---
-        exit_frame = ttk.Frame(self.root, padding=10)
+        exit_frame = ttk.Frame(content, padding=10)
         exit_frame.pack(fill="x")
 
         ttk.Label(exit_frame, text="Exit Scanner (simulated):").grid(
@@ -298,7 +346,7 @@ class LinenApp:
         exit_button.grid(row=0, column=2, padx=5)
 
         # --- Table of every linen item saved so far ---
-        saved_header_frame = ttk.Frame(self.root)
+        saved_header_frame = ttk.Frame(content)
         saved_header_frame.pack(fill="x", padx=10)
 
         ttk.Label(saved_header_frame, text="Saved Items:").pack(side="left")
@@ -319,7 +367,7 @@ class LinenApp:
         # in the visible window - with enough saved items (or a small
         # enough window) there was no way to reach the rest at all.
         # Wrapping it with a Frame + Scrollbar fixes that.
-        tree_frame = ttk.Frame(self.root)
+        tree_frame = ttk.Frame(content)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=(10, 0))
 
         columns = ("tag_id", "customer_name", "room_number", "item_type", "status")
@@ -337,7 +385,7 @@ class LinenApp:
         tree_scrollbar.pack(side="right", fill="y")
 
         # --- Buttons that act on whichever row is selected above ---
-        actions_frame = ttk.Frame(self.root, padding=10)
+        actions_frame = ttk.Frame(content, padding=10)
         actions_frame.pack(anchor="e")
 
         mark_in_use_button = ttk.Button(
