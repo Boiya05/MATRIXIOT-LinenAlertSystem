@@ -3,8 +3,9 @@
 import { Nav } from '@/components/nav';
 import { Protected } from '@/components/protected';
 import { useAuth } from '@/contexts/auth-context';
-import { getStats } from '@/data/linen-data';
+import { getStats, type ScannerMode } from '@/data/linen-data';
 import { useLinenItems } from '@/hooks/use-linen-items';
+import { useScannerStatus } from '@/hooks/use-scanner-status';
 import { useTheftAlerts } from '@/hooks/use-theft-alerts';
 
 export default function DashboardPage() {
@@ -12,18 +13,81 @@ export default function DashboardPage() {
     <Protected>
       <Nav />
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-9">
-        <div className="mb-7 animate-fade-in-up">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-            Overview
-          </h1>
-          <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">
-            Live inventory status and theft alerts.
-          </p>
+        <div className="mb-7 flex flex-wrap items-start justify-between gap-3 animate-fade-in-up">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+              Overview
+            </h1>
+            <p className="mt-0.5 text-sm text-slate-400 dark:text-slate-500">
+              Live inventory status and theft alerts.
+            </p>
+          </div>
+          <ScannerStatusBadge />
         </div>
         <StatsRow />
         <ActiveAlerts />
       </main>
     </Protected>
+  );
+}
+
+const SCANNER_MODE_DISPLAY: Record<
+  NonNullable<ScannerMode>,
+  { label: string; dot: string; chip: string }
+> = {
+  register: {
+    label: 'REGISTER',
+    dot: 'bg-blue-500',
+    chip: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  },
+  assign: {
+    label: 'ASSIGN TO GUEST',
+    dot: 'bg-purple-500',
+    chip: 'bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-400',
+  },
+  exit: {
+    label: 'EXIT SCANNER',
+    dot: 'bg-red-500',
+    chip: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+  },
+};
+
+/**
+ * Live read-only view of what the desktop app's one physical scanner
+ * is currently doing - there's no way to scan from this dashboard (see
+ * app/scan's removal), so this is the only visibility this app has
+ * into it. Backed by scanner_status, written by the desktop app's
+ * database.update_scanner_status() every time main.py's Scanner Mode
+ * buttons are pressed (see hooks/use-scanner-status.ts).
+ */
+function ScannerStatusBadge() {
+  const { status, loading } = useScannerStatus();
+
+  if (loading) {
+    return <span className="h-6 w-40 animate-shimmer rounded-full" />;
+  }
+
+  if (!status.mode) {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+        Desktop scanner: idle
+      </span>
+    );
+  }
+
+  const display = SCANNER_MODE_DISPLAY[status.mode];
+  return (
+    <span
+      className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${display.chip}`}
+      title={status.updatedAt ? `Since ${new Date(status.updatedAt).toLocaleString()}` : undefined}
+    >
+      <span className="relative flex h-1.5 w-1.5">
+        <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${display.dot} opacity-75`} />
+        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${display.dot}`} />
+      </span>
+      Desktop scanner: {display.label}
+    </span>
   );
 }
 

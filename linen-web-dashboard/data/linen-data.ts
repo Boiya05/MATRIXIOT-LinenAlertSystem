@@ -421,6 +421,35 @@ export async function getRecentItemEvents(): Promise<ItemEvent[]> {
   return (data ?? []).map(mapRowToItemEvent);
 }
 
+export type ScannerMode = 'register' | 'assign' | 'exit' | null;
+
+export interface ScannerStatus {
+  mode: ScannerMode;
+  updatedAt: string | null;
+}
+
+/**
+ * What the desktop app's one physical scanner is currently doing
+ * (Register / Assign to Guest / Exit Scanner, or no mode picked yet) -
+ * mirrors main.py's self.scan_mode, written there by
+ * database.update_scanner_status() every time it changes. Returns
+ * mode: null if the desktop app has never reported in (row doesn't
+ * exist yet) or has since closed (see main.py's _on_close()).
+ */
+export async function getScannerStatus(): Promise<ScannerStatus> {
+  const { data, error } = await supabase
+    .from('scanner_status')
+    .select('mode, updated_at')
+    .eq('id', 'desktop')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load scanner status: ${error.message}`);
+  }
+
+  return { mode: (data?.mode as ScannerMode) ?? null, updatedAt: data?.updated_at ?? null };
+}
+
 export interface LinenStats {
   total: number;
   inUse: number;

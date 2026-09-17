@@ -16,7 +16,6 @@ import { useTheme } from '@/hooks/use-theme';
 
 const BASE_LINKS = [
   { href: '/', label: 'Dashboard' },
-  { href: '/scan', label: 'Scan' },
   { href: '/inventory', label: 'Inventory' },
   { href: '/history', label: 'Alert history' },
   { href: '/activity', label: 'Activity' },

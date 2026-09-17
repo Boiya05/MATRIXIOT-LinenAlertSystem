@@ -7,13 +7,13 @@ Vercel. It reads the exact same Supabase tables the desktop app and
 desktop app shows up here too, with active theft alerts live via
 Supabase Realtime.
 
-This started as a read-only "management-facing" client - where hotel
-management checks live status and reviews alerts from a browser - but
-now also does everything the desktop app's scanning terminal does:
-register items and run the exit-scanner theft check, straight from a
-browser tab. That makes the desktop app optional, not required: any
-machine with Chrome or Edge can now be a scanning checkpoint, not just
-the one running the Python app.
+This is a read-only "management-facing" client - hotel management
+checks live status and reviews alerts from a browser. It briefly also
+did everything the desktop app's scanning terminal does (register
+items, run the exit-scanner theft check) via the browser's Web Serial
+API, but that was removed - see **Why there's no Scan page** below.
+The desktop app is the only place scanning actually happens; this
+dashboard is how everyone else sees what it's doing.
 
 ## What's here
 
@@ -21,27 +21,12 @@ the one running the Python app.
   sign-up screen: accounts are created directly in the Supabase
   dashboard (**Authentication → Users**), since a management dashboard
   shouldn't let anyone self-register.
-- **Dashboard** (`/`) — live item-status counts, and active theft
-  alerts that update in real time (new alerts appear, dismissals from
-  any device remove them) with a dismiss button.
-- **Scan** (`/scan`) — three independent sections: **Register items**
-  (scan tags into a category - guest/room are optional, leave them
-  blank to save as unassigned stock; a tag that's already registered
-  can't be scanned into a new registration, since that would silently
-  overwrite its existing data - use **Assign to guest** for it
-  instead; a live "N scanned" count tracks the pending batch, and the
-  duplicate check runs against a local cache rather than a network
-  call per scan, so a real reader's rapid reads aren't bottlenecked by
-  round-trip latency - see **Real hardware from the browser** below),
-  **Assign to guest** (scan any
-  number of already-registered tags, then attach or change one
-  guest/room for all of them at once), and **Exit scanner** (the theft
-  check). The two entry-side sections default to **Simulated** mode -
-  really a manual Tag ID field, works in any browser, no hardware
-  needed, and is also how a real USB "keyboard wedge" RFID reader
-  reaches this page (see **Real hardware from the browser** below) -
-  and can switch to **Web Serial** mode instead for a reader that
-  talks over a real serial connection.
+- **Dashboard** (`/`) — live item-status counts, active theft alerts
+  that update in real time (new alerts appear, dismissals from any
+  device remove them) with a dismiss button, and a **Desktop scanner**
+  badge showing which Scanner Mode the desktop app's physical reader
+  is currently in (Register / Assign to Guest / Exit Scanner, or
+  idle) - see **Desktop scanner status** below.
 - **Inventory** (`/inventory`) — every linen item, with a status
   filter, a search box (tag, guest, room, item type), and checkboxes
   to bulk-delete selected items (staff only).
@@ -67,8 +52,7 @@ the one running the Python app.
 linen-web-dashboard/
 ├── app/
 │   ├── login/page.tsx       # Sign-in form
-│   ├── page.tsx             # Dashboard (stats + live alerts)
-│   ├── scan/page.tsx        # Register items + exit-scanner theft check
+│   ├── page.tsx             # Dashboard (stats + live alerts + scanner status badge)
 │   ├── inventory/page.tsx   # Full item list, filterable/searchable
 │   ├── history/page.tsx     # Dismissed alert history
 │   └── layout.tsx           # Root layout - wraps everything in AuthProvider
@@ -77,21 +61,14 @@ linen-web-dashboard/
 │   └── protected.tsx         # Redirects to /login if no session
 ├── contexts/auth-context.tsx # Session state + signIn/signOut - mirrors the mobile app's
 ├── data/linen-data.ts        # Supabase queries - reads ported from the mobile app,
-│                              # writes (saveLinenItem/logTheftAlert) ported from the
+│                              # writes (saveLinenItem/dismissAlert) ported from the
 │                              # desktop app's database.py
-├── lib/detector.ts           # Theft-detection rule, ported from the desktop app's detector.py
-├── hardware/                  # RFID reader abstraction - browser-side twin of the
-│   │                           # desktop app's hardware/ package, same design
-│   ├── base.ts                # RFIDReader interface (queue + poll, same pattern as Python)
-│   ├── simulated-reader.ts    # Button/typed-input driven fake reader (default mode)
-│   ├── web-serial-reader.ts   # Real USB reader via the Web Serial API - protocol
-│   │                           # parsing isolated the same way as serial_reader.py
-│   └── web-serial.d.ts        # Ambient types for Web Serial (not in TS's DOM lib yet)
 ├── hooks/
-│   ├── use-reader.ts          # Poll loop + mode switching for the Scan page
-│   ├── use-linen-items.ts    # Live-loads all items
-│   ├── use-theft-alerts.ts   # Live-loads active alerts + dismiss
-│   └── use-alert-history.ts  # Live-loads dismissed alerts
+│   ├── use-linen-items.ts     # Live-loads all items
+│   ├── use-theft-alerts.ts    # Live-loads active alerts + dismiss
+│   ├── use-alert-history.ts   # Live-loads dismissed alerts
+│   ├── use-item-events.ts     # Live-loads the audit trail
+│   └── use-scanner-status.ts  # Live-loads the desktop app's current Scanner Mode
 ├── .env.example               # Template - copy to .env.local
 └── README.md                  # This file
 ```
@@ -167,105 +144,103 @@ and follow the prompts (link/create a project, confirm the root is
 this folder) - `npx vercel --prod` for a production deploy once you're
 ready.
 
-## Real hardware from the browser
+## Why there's no Scan page
 
-**If your reader is a USB "keyboard wedge" scanner** (types the tag ID
-and presses Enter, shows up as a keyboard to the OS, no COM port) -
-none of this section applies. It already works today through the
-Simulated-mode Tag ID fields on the Scan page - the browser has no way
-to tell "a person typed this" from "a keyboard-emulating scanner typed
-this," so it just works, as long as the field has focus when a tag is
-scanned. Everything below is for a reader that instead talks over a
-real serial connection, via Web Serial.
+This dashboard briefly had a full `/scan` page - Register items,
+Assign to guest, and Exit scanner sections, each able to switch from a
+manual Tag ID field to a real reader via the [Web Serial
+API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API).
+It was removed once the desktop app's actual physical reader was
+brought up and turned out to **reject the plain UHF inventory command
+outright** (status `0xFE`, "illegal command") from every from-scratch
+protocol implementation thrown at it, including the vendor's own
+**64-bit** DLL - only the vendor's **32-bit** DLL build works (see the
+desktop app's README, "If `serial` doesn't work"). Web Serial talks
+raw bytes over the port, same as any from-scratch implementation
+would, with no way to load a vendor DLL from a browser at all - so it
+would hit the exact same wall this specific reader unit already beat
+every other attempt with. Rather than ship a **Connect real reader**
+button that can't actually work with the hardware this project has,
+the page was removed. `hardware/`, `hooks/use-reader.ts`, and
+`lib/detector.ts` went with it - they had no other callers.
 
-The Scan page's **Connect real reader** button uses the [Web Serial
-API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API)
-to talk to a USB RFID reader directly, the same way the desktop app's
-`SerialRFIDReader` does over `pyserial` - opens the port, reads it on
-a loop, pushes parsed Tag IDs into the same queue the Simulated mode
-uses. A few real constraints worth knowing before relying on it:
+**If a future reader model doesn't have this problem** (i.e. it
+accepts the plain serial protocol the way `hardware/serial_reader.py`
+was originally written for), a browser-based Scan page using Web
+Serial is a reasonable thing to rebuild - nothing about the underlying
+idea was wrong, it just doesn't work with this specific unit.
 
-- **Chromium only.** Chrome and Edge support Web Serial; Firefox and
-  Safari don't, at all - not even behind a flag. The button disables
-  itself with an explanatory tooltip when the browser doesn't support
-  it, rather than failing after a click.
-- **HTTPS or localhost only.** Works on this Vercel deployment and in
-  local dev; wouldn't work if this were ever served over plain HTTP.
-- **The reader has to be plugged into whatever machine is running the
-  browser tab.** Deploying this dashboard to Vercel doesn't change
-  that - "scanning from the web" still means a laptop with Chrome
-  sitting at the checkpoint with the reader plugged into it. It's a
-  different program than the desktop app, not a way to scan from
-  anywhere in the world.
-- **The protocol is still a placeholder**, exactly like the desktop
-  app's `serial_reader.py` - `hardware/web-serial-reader.ts` has the
-  same two isolated methods (`sendStartupCommands`,
-  `parseTagFromFrame`) waiting on a real reader model and its
-  datasheet. Until then, it assumes plain ASCII lines, which almost
-  certainly isn't how a real UHF reader actually talks. Keep both
-  files in sync if you're implementing the same reader's protocol for
-  both the desktop app and this dashboard.
+The desktop app is now the only place scanning happens. This dashboard
+watches what it's doing instead - see the next section.
 
-A 5-second per-tag cooldown is built into the exit scanner
-(`RESCAN_COOLDOWN_MS` in `app/scan/page.tsx`) so a real reader's
-continuous-inventory mode - which reports the same tag many times a
-second while it's in range - doesn't log a duplicate theft alert for
-every single one of those reads.
+## Desktop scanner status
 
-**A keyboard-wedge reader can occasionally drop the Enter keystroke
-between two very fast back-to-back reads** - confirmed happening in
-practice, not just a theoretical risk - landing as one long string
-that's actually two (or more) tag IDs glued together with no
-separator. `hardware/base.ts`'s `push()` recovers from this: a read
-that's all hex characters and an exact multiple of 24 (the fixed
-length of this hardware's tag IDs) gets split back into individual tag
-IDs before anything downstream sees it, since both `SimulatedReader`
-and `WebSerialReader` funnel through `push()` rather than touching the
-queue directly. A read that doesn't match that exact pattern passes
-through unchanged.
+The desktop app has one physical scanner and a Scanner Mode toggle
+(Register / Assign to Guest / Exit Scanner - see its README). That
+mode is normally just local state inside `main.py`, invisible to every
+other app. The **Desktop scanner** badge on `/` makes it visible: the
+desktop app writes its current mode to a `scanner_status` table
+(`database.update_scanner_status()`) every time the mode changes, and
+this dashboard reads it live via Supabase Realtime
+(`hooks/use-scanner-status.ts`) - the same "shared Supabase state" as
+every other cross-app pattern here, not a network connection to the
+desktop app itself.
 
-Beyond that cooldown, a tag with an alert already active (not yet
-dismissed) doesn't raise a second one either (`hasActiveAlert()` in
-`data/linen-data.ts`) - re-scanning it, or a reader that keeps seeing
-it well past the cooldown, won't spam more alerts for the same event.
-Dismissing the existing alert - from this dashboard, the mobile app,
-or the desktop app - is what lets the next flagged scan raise a new
-one; `theft_alerts` is shared across all three.
+Run this once in the Supabase SQL Editor (same one-time-per-project
+pattern as the mobile app's other setup SQL):
 
-**Register items' "already registered?" check runs against a local
-cache**, not a fresh `getItemByTag()` call per scan - loaded once when
-the section mounts, and kept current as items are saved. With a real
-reader flooding reads during a batch registration, that per-scan
-network round-trip used to be the actual limit on how fast you could
-move through a stack of items. Since the cache can still go a few
-seconds stale (a different device registering the same tag in the
-meantime), clicking **Save** does one batched re-check of the whole
-pending list against the database first (`getItemsByTagIds()` in
-`data/linen-data.ts`) and quietly skips anything that turns out to
-already be registered, rather than overwriting it.
+```sql
+-- One row, always id 'desktop' - there's exactly one physical scanner
+-- in this project. The desktop app upserts it every time main.py's
+-- Scanner Mode buttons are pressed, and writes mode: null when it
+-- closes, so this doesn't keep showing a stale mode after it's quit.
+create table if not exists scanner_status (
+  id text primary key,
+  mode text check (mode in ('register', 'assign', 'exit')),
+  updated_at timestamptz not null default now()
+);
+
+alter table scanner_status enable row level security;
+
+-- Same visibility as linen_items/theft_alerts: any signed-in account
+-- can see it. Only the desktop app ever writes to it, authenticating
+-- as service_role (bypasses RLS entirely, same as linen_items/
+-- theft_alerts), so no insert/update policy is needed here.
+create policy "Authenticated users can view scanner status"
+  on scanner_status for select
+  using (auth.uid() is not null);
+```
+
+If the badge doesn't update live after running this, double check
+**Database → Replication** in the Supabase dashboard has Realtime
+turned on for `scanner_status`, the same as it needs to be for
+`linen_items`/`theft_alerts`.
+
+Until the desktop app reports in at least once (or after it's been
+closed), the badge just shows "idle" - that's the expected state for
+"no data yet," not an error.
 
 ## Telegram alerts
 
 The desktop app sends a Telegram message straight from Python, using
 credentials in its own local `telegram_config.json` (see its README).
-Neither this dashboard nor the mobile app can do that safely - a
-browser tab or an app bundle has no equivalent private place to keep a
-bot token; anyone could pull it out of dev tools or the APK and use it
-to message the same chat. So instead, both call a small server-side
-route on this dashboard - `app/api/telegram-alert/route.ts` - which
-holds the real credentials (as `TELEGRAM_BOT_TOKEN` /
-`TELEGRAM_CHAT_ID` in Vercel's **Settings → Environment Variables**,
-never in `.env.example` or any committed file) and sends the message
-on their behalf.
+The mobile app can't do that safely - an app bundle has no equivalent
+private place to keep a bot token; anyone could pull it out of the APK
+and use it to message the same chat. So instead it calls a small
+server-side route hosted **on this dashboard** -
+`app/api/telegram-alert/route.ts` - which holds the real credentials
+(as `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in Vercel's **Settings →
+Environment Variables**, never in `.env.example` or any committed
+file) and sends the message on its behalf. This dashboard itself has
+no scanner of its own to raise an alert from (see **Why there's no
+Scan page** above) - it only hosts the route, it doesn't call it.
 
 That route requires a valid Supabase session (checked server-side via
 `supabase.auth.getUser()`) before it'll send anything - the same "must
 be logged in" boundary that already gates every write to
 `theft_alerts` through Row Level Security, reused here instead of
-inventing a separate secret to manage. `lib/telegram-alert.ts` is what
-this dashboard's own exit scanner calls; the mobile app has its own
-copy pointed at this dashboard's deployed URL (see the mobile app's
-README).
+inventing a separate secret to manage. See the mobile app's README for
+how it calls this route (`EXPO_PUBLIC_NOTIFY_API_URL`).
 
 If `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` aren't set in this
 deployment's environment, the route just returns "not configured"
@@ -277,26 +252,18 @@ already happened by the time this is called.
 ## Current status
 
 Working: login, live dashboard stats, live theft alerts with dismiss,
-searchable/filterable inventory with bulk delete and (admin only) an
-Edit action for fixing a mistake on an already-registered item - see
-**Editing a registered item (admin only)** in the mobile app's README
-- alert history, the audit trail (Activity), an Admin page for
-assigning viewer/staff/admin access by email (see **Admin role** in
-the mobile app's README), and item registration (optional guest/room,
-real USB hardware via a manual field or Web Serial, local-cache
-duplicate checking, and recovery from merged/concatenated reads - see
-**Real hardware from the browser** above) + a separate Assign to guest
-step + exit-scan theft detection (which now also relays a Telegram
-alert, the same as the desktop app - see **Telegram alerts** above) -
-all reading and writing the same Supabase project as the desktop and
-mobile apps, protected by the same Row Level Security policies.
-Verified against live data before being committed: a full register →
-assign → exit-scan → theft-alert-logged pass through the real UI,
-using a throwaway test account and test rows that were deleted
-afterward.
+a live **Desktop scanner** status badge (see **Desktop scanner
+status** above), searchable/filterable inventory with bulk delete and
+(admin only) an Edit action for fixing a mistake on an
+already-registered item - see **Editing a registered item (admin
+only)** in the mobile app's README - alert history, the audit trail
+(Activity), an Admin page for assigning viewer/staff/admin access by
+email (see **Admin role** in the mobile app's README), and hosting the
+Telegram relay route the mobile app calls (see **Telegram alerts**
+above) - all reading and writing the same Supabase project as the
+desktop and mobile apps, protected by the same Row Level Security
+policies.
 
 Not yet built:
 - Multi-property support (see the root `ARCHITECTURE.md` for the
   `organization_id` design this would use)
-- The real reader protocol itself - `hardware/web-serial-reader.ts`'s
-  two placeholder methods, same blocker as the desktop app
