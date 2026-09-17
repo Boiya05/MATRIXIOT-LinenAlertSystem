@@ -46,7 +46,8 @@ class DllBridgeReader(RFIDReader):
     subprocess under a 32-bit Python interpreter.
 
     Args:
-        role (str): "entry_reader" or "exit_reader" - see base.py.
+        role (str): matches a top-level key in hardware_config.json -
+            in practice just "scanner" - see base.py.
         port (int): COM port number, e.g. 5 for COM5.
         python32_path (str): Path to a 32-bit Python interpreter
             (`py -0` lists installed ones; ctypes needs one that

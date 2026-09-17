@@ -65,9 +65,9 @@ class RFIDReader(ABC):
     """Base class for anything that can produce a stream of tag reads."""
 
     def __init__(self, role):
-        # "entry_reader" or "exit_reader" - which checkpoint this
-        # instance represents. Used only for log/error messages, so
-        # it's clear which reader a problem came from.
+        # Matches a top-level key in hardware_config.json - in
+        # practice just "scanner", the app's one physical reader.
+        # Used only for log/error messages.
         self.role = role
         self.tag_queue = queue.Queue()
 

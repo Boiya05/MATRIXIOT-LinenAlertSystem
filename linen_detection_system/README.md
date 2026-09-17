@@ -299,20 +299,23 @@ deliberately not set up here to keep this simple.
 
 ## Hardware setup
 
-There are two RFID checkpoints in this app - an **entry reader** (used
-when registering new items) and an **exit reader** (used for theft
-detection) - and each is built on the same `hardware/` abstraction, so
-either one can be simulated or a real serial reader independently of
-the other.
+There's one physical RFID scanner in this app (`hardware_config.json`'s
+`"scanner"` role), built on the `hardware/` abstraction so it can be
+simulated or a real reader without `main.py` caring which. What a tag
+read *means* - add it to the pending list, or check it for theft - is a
+runtime mode you pick in the GUI with the **Register** / **Exit
+Scanner** buttons, not something tied to which reader is plugged in:
+only one mode is active at a time, since there's only one scanner.
 
 **If your reader is a USB "keyboard wedge" scanner** (types the tag ID
 and presses Enter, shows up as a keyboard to Windows, no COM port) -
 you don't need anything below this. That kind of reader already works
-today through the **Scan / type Tag ID** field (registering) and the
-**Exit Scanner** field (theft detection) - just click into whichever
-field so it has focus, then scan. Everything below is for a reader
-that instead talks over a real serial port, which needs the setup
-(and the still-unwritten protocol parsing) described here.
+today: it only ever "types" into whatever text field currently has
+focus, and the only such field left in the GUI is the Manual Test Scan
+field (simulated mode only) - click into it so it has focus, pick
+Register or Exit Scanner mode, then scan. Everything below is for a
+reader that instead talks over a real serial port or vendor DLL, which
+needs the setup described here.
 
 **A keyboard-wedge reader in continuous-inventory mode can drop the
 Enter keystroke between two very fast back-to-back reads** - confirmed
@@ -333,11 +336,10 @@ typing something else into the field is never mangled.
   implements: `connect()`, `disconnect()`, `start()`, `stop()`, and
   `poll()`. `main.py` only ever talks to this interface - it doesn't
   know or care whether a given reader is simulated or real.
-- `hardware/simulated_reader.py` is what both checkpoints use by
-  default. It's driven directly by the GUI - the "Scan / type Tag ID"
-  and exit scanner fields - rather than any hardware, which is also
-  how a real keyboard-wedge reader reaches the app (see the note
-  above).
+- `hardware/simulated_reader.py` is what the scanner uses by default.
+  It's driven directly by the GUI's Manual Test Scan field rather than
+  any hardware, which is also how a real keyboard-wedge reader reaches
+  the app (see the note above).
 - `hardware/serial_reader.py` is the real-hardware path: a generic
   serial (COM port) transport that opens the port and reads it on a
   background thread.
@@ -360,7 +362,8 @@ typing something else into the field is never mangled.
   entirely), it fails immediately with a clear message instead of
   silently polling a connection that will never produce a tag read.
 - `hardware/reader_factory.py` reads `hardware_config.json` and builds
-  a `SimulatedReader` or `SerialRFIDReader` for each role accordingly.
+  a `SimulatedReader`, `SerialRFIDReader`, or `DllBridgeReader` for the
+  `"scanner"` role accordingly.
 
 **Verifying the protocol implementation (no reader or adapter needed):**
 
@@ -401,18 +404,17 @@ hardware would.
    python tools/fake_rd905uw.py
    ```
 
-2. Point a checkpoint at it in `hardware_config.json` - note the
+2. Point the scanner at it in `hardware_config.json` - note the
    `socket://` URL in place of a COM port:
 
    ```json
    {
-     "entry_reader": { "type": "simulated" },
-     "exit_reader": { "type": "serial", "port": "socket://127.0.0.1:5000" }
+     "scanner": { "type": "serial", "port": "socket://127.0.0.1:5000" }
    }
    ```
 
 3. In another terminal, run the app as usual (`python main.py`). Watch
-   for the `[exit_reader] Connected: reader firmware v2.36...` line.
+   for the `[scanner] Connected: reader firmware v2.36...` line.
 
 4. Back in the fake reader's terminal, type a tag ID and press Enter to
    put it "in range"; type it again to take it away. `list`, `clear`
@@ -425,18 +427,18 @@ port can be a plain COM name *or* a pyserial URL. The same mechanism
 would let the RD905UW's optional RJ45/TCP interface be used instead of
 RS485 (`"port": "socket://192.168.1.192:6000"`).
 
-**Switching a checkpoint to real hardware:**
+**Switching to real hardware:**
 
 1. Copy `hardware_config.example.json` to `hardware_config.json` if
    you haven't already.
-2. Set the role's `type` to `"serial"` and fill in its COM port (check
-   Windows Device Manager once the reader/adapter is plugged in).
-   Everything except `port` has a sensible default and can be omitted:
+2. Set the scanner's `type` to `"serial"` and fill in its COM port
+   (check Windows Device Manager once the reader/adapter is plugged
+   in). Everything except `port` has a sensible default and can be
+   omitted:
 
    ```json
    {
-     "entry_reader": { "type": "simulated" },
-     "exit_reader": {
+     "scanner": {
        "type": "serial",
        "port": "COM3",
        "baud_rate": 57600,
@@ -455,18 +457,20 @@ RS485 (`"port": "socket://192.168.1.192:6000"`).
 
 3. `pip install -r requirements.txt` if you haven't already run it
    since `pyserial` was added.
-4. Run the app. A reader set to `"serial"` scans automatically in the
-   background - its GUI control (the Scan button or exit field) shows
-   a message instead of acting, since manual input only applies in
-   simulated mode. If it can't connect, a warning dialog shows exactly
-   why (wrong port, wrong baud, no response) instead of the app
-   crashing or silently doing nothing.
+4. Run the app. A scanner set to `"serial"` scans automatically in the
+   background - there's no Manual Test Scan field at all once it's
+   not a `SimulatedReader` (see `_build_widgets()`), so tag reads only
+   ever come from the real reader now. Pick Register or Exit Scanner
+   mode with the GUI buttons to decide what those reads do. If the
+   reader can't connect, a warning dialog shows exactly why (wrong
+   port, wrong baud, no response) instead of the app crashing or
+   silently doing nothing.
 
 `hardware_config.json` is machine-specific (COM ports differ per PC),
 so like the other config files it's listed in `.gitignore` and never
 committed - only `hardware_config.example.json` is. A missing
-`hardware_config.json` is not an error - it just means both
-checkpoints stay simulated, same as before this layer existed.
+`hardware_config.json` is not an error - it just means the scanner
+stays simulated, same as before this layer existed.
 
 **If `"serial"` doesn't work - a third reader type, `"uhfreader18_dll"`:**
 
@@ -501,12 +505,11 @@ same `0xFE` wall this one did.
    ```
    winget install --id Python.Python.3.11 --architecture x86
    ```
-2. Set the role's `type` to `"uhfreader18_dll"` and fill in its COM
+2. Set the scanner's `type` to `"uhfreader18_dll"` and fill in its COM
    port number (as an int, not a string):
    ```json
    {
-     "entry_reader": { "type": "simulated" },
-     "exit_reader": {
+     "scanner": {
        "type": "uhfreader18_dll",
        "port": 5,
        "baud_rate": 57600,
@@ -528,16 +531,24 @@ same `0xFE` wall this one did.
    install for the bridge script itself, since it has zero
    dependencies beyond the Python standard library.
 4. Run the app as usual. Watch for
-   `[exit_reader] Connected via DLL bridge: firmware v5.2, type 0x86, ...`
+   `[scanner] Connected via DLL bridge: firmware v5.2, type 0x86, ...`
    instead of the plain `Connected:` line `"serial"` prints.
 
 **How item type is determined:** a real UHF tag only carries a Tag ID
 (its EPC), not a human-readable type like "Bath Towel". That's
-resolved by having staff pick the type at registration time: the
-**Item Type** dropdown next to the scan field (`ITEM_TYPES` in
-`main.py`) is read whenever a tag is scanned in, so each pending item
-carries the type that was selected when it was scanned. Nothing needs
-to be encoded on the tag itself.
+resolved by having staff pick the type before scanning in Register
+mode: the **Item Type** dropdown (`ITEM_TYPES` in `main.py`) is read
+whenever a tag is scanned in, so each pending item carries the type
+that was selected at the time. Nothing needs to be encoded on the tag
+itself.
+
+**Register vs. Exit Scanner mode:** there's one physical scanner, so
+only one of these is active at a time - press **Register** before
+scanning new stock in, or **Exit Scanner** before watching for tags
+leaving. Switching modes doesn't scan anything by itself; it just
+decides where the *next* tag reads get routed (`main.py`'s
+`_on_set_mode()`/`_poll_readers()`). A tag read while no mode is
+selected yet is dropped with a status message, not silently guessed.
 
 ## Current status
 
@@ -548,7 +559,7 @@ Everything described above is implemented and working:
 - **main.py** - scan / batch-assign / status / exit-scan GUI, wired to
   the hardware layer below rather than generating scans itself
 - **hardware/** - RFID reader abstraction (see **Hardware setup**
-  above); both checkpoints run in simulated mode by default.
+  above); the scanner runs in simulated mode by default.
   `uhfreader18_protocol.py` implements the RD905UW/UHFReader18 wire
   protocol and is covered by `tests/` (verified against a real
   captured frame from the MS9 docs); `serial_reader.py` wires it up to
@@ -567,6 +578,13 @@ Everything described above is implemented and working:
   the typed Operator Name if one was given - see the mobile app's
   README for the full setup and the web dashboard's Activity page for
   where to view it
+- **Scanner Mode** - one physical scanner, three modes (Register /
+  Assign to Guest / Exit Scanner) picked with the GUI's Scanner Mode
+  buttons, routing tag reads accordingly (see `main.py`'s module
+  docstring and `_on_set_mode()`). The current mode is also written to
+  Supabase (`database.update_scanner_status()`) so the web dashboard
+  can show it live - see its README, "Desktop scanner status" (needs
+  a one-time `scanner_status` table created via the SQL there)
 
 The mobile companion app (`linen-mobile-app-v2`) shares the same
 Supabase tables for live viewing (Home stats, rooms/categories, and

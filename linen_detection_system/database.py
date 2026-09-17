@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import threading
+from datetime import datetime, timezone
 
 from supabase import create_client
 
@@ -38,6 +39,12 @@ from models import LinenItem
 TABLE_NAME = "linen_items"
 ALERTS_TABLE_NAME = "theft_alerts"
 EVENTS_TABLE_NAME = "linen_item_events"
+SCANNER_STATUS_TABLE_NAME = "scanner_status"
+
+# This app has exactly one physical scanner (see main.py's module
+# docstring), so its status is a single row keyed by this fixed id -
+# no per-device identity is needed yet.
+SCANNER_STATUS_ROW_ID = "desktop"
 
 # Guards every actual network call made through the shared client below
 # (see _execute()). alarm.py's trigger_alarm() fires Telegram, WhatsApp,
@@ -334,5 +341,37 @@ def log_item_event(
                 "actor_label": actor_label,
                 "source_app": "desktop",
             }
+        )
+    )
+
+
+def update_scanner_status(mode):
+    """
+    Record which Scanner Mode (see main.py's _on_set_mode()) the one
+    physical scanner is currently in, so the web dashboard can show it
+    live - see hooks/use-scanner-status.ts there. This is local,
+    in-memory state in main.py that would otherwise be invisible to
+    every other app; this is the only thing that makes it visible.
+
+    Args:
+        mode (str or None): "register", "assign", "exit", or None
+            (no mode selected, or the app is closing - see main.py's
+            _on_close()).
+
+    Best-effort, same as log_theft_alert/log_item_event: a failure to
+    write this should never block the mode switch (or app close) it's
+    describing.
+    """
+    # updated_at's `default now()` only fires on INSERT - this row gets
+    # UPDATEd on every later mode change, so it's set explicitly here
+    # rather than going stale after the row's first-ever write.
+    _execute(
+        get_client().table(SCANNER_STATUS_TABLE_NAME).upsert(
+            {
+                "id": SCANNER_STATUS_ROW_ID,
+                "mode": mode,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+            on_conflict="id",
         )
     )

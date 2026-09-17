@@ -1,10 +1,13 @@
 """
 hardware/reader_factory.py
 
-Builds the right RFIDReader for each checkpoint ("entry_reader" or
-"exit_reader") based on hardware_config.json, so main.py never has to
-know or care whether it got a SimulatedReader or a SerialRFIDReader -
-it just calls connect() / start() / poll() the same way either way.
+Builds the RFIDReader for the app's one physical scanner ("scanner" in
+hardware_config.json), so main.py never has to know or care whether it
+got a SimulatedReader, a SerialRFIDReader, or a DllBridgeReader - it
+just calls connect() / start() / poll() the same way regardless. Which
+of the two things a tag read *means* (register vs. exit-scan) is a
+runtime mode toggle in main.py, not a separate reader/role - see its
+module docstring.
 """
 
 import json
@@ -40,11 +43,10 @@ HARDWARE_CONFIG_PATH = os.path.join(BASE_DIR, "hardware_config.json")
 
 # Unlike Supabase/Telegram config, hardware config isn't required for
 # the app to run - simulated mode needs no configuration at all, so a
-# missing hardware_config.json just means "everything simulated"
-# rather than an error.
+# missing hardware_config.json just means "simulated" rather than an
+# error.
 _DEFAULT_CONFIG = {
-    "entry_reader": {"type": "simulated"},
-    "exit_reader": {"type": "simulated"},
+    "scanner": {"type": "simulated"},
 }
 
 
@@ -61,8 +63,8 @@ def create_reader(role):
     Build the RFIDReader configured for the given role.
 
     Args:
-        role (str): "entry_reader" or "exit_reader" - matches the
-            top-level keys in hardware_config.json.
+        role (str): matches a top-level key in hardware_config.json -
+            in practice just "scanner", the app's one physical reader.
 
     Returns:
         RFIDReader: a SimulatedReader (the default), a SerialRFIDReader

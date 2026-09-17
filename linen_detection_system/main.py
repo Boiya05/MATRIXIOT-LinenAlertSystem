@@ -6,18 +6,23 @@ Entry point for the Linen RFID Detection System.
 This version uses a graphical window (built with Python's built-in
 "tkinter" library) instead of a terminal.
 
-Two RFID checkpoints feed this app: an entry reader (registering new
-items into the pending list) and an exit reader (theft detection).
-Both are built on the same generic reader abstraction in hardware/ -
-by default (hardware_config.json missing or unconfigured) both are
-SimulatedReader instances, driven by the "Scan / type Tag ID" field and
-the exit scanner's manual Tag ID field. A real USB "keyboard wedge"
-RFID reader - the kind that just types the tag ID and presses Enter,
-no COM port involved - works today through either of those text
-fields, no configuration needed; see their comments in
-_build_widgets(). hardware_config.json is only for a reader that talks
-over a real serial port instead - see hardware/serial_reader.py for
-what's still a placeholder there.
+This app drives a single physical RFID scanner (hardware_config.json's
+"scanner" role - a SimulatedReader by default, or a real reader; see
+hardware/reader_factory.py), whose reads get routed to one of three
+places depending on which mode is currently selected in the GUI:
+
+- Register mode: scanned tags land in the pending list, waiting to be
+  saved/assigned (see the "Register" button and _handle_entry_scan()).
+- Assign to Guest mode: scanned tags (already registered) are queued
+  to have one Customer Name + Room Number applied to all of them at
+  once (see the "Assign to Guest" button and _handle_assign_scan()).
+- Exit Scanner mode: scanned tags are checked for theft, same as
+  before (see the "Exit Scanner" button and _handle_exit_scan()).
+
+Only one mode is active at a time, since there's one physical scanner
+- see self.scan_mode and _on_set_mode() below. See _build_widgets()'s
+comments for what a SimulatedReader-only "manual test scan" field is
+for.
 """
 
 import time
@@ -37,12 +42,12 @@ from models import STATUS_IN_USE, STATUS_LAUNDRY, STATUS_STORAGE, LinenItem
 # dropdown and _handle_entry_scan() below.
 ITEM_TYPES = ["Bath Towel", "Hand Towel", "Washcloth", "Bedsheet", "Pillowcase", "Blanket"]
 
-# How long to ignore repeat reads of the same tag, at either
-# checkpoint, after processing one. A real UHF reader reports a tag
-# many times a second for as long as it's in range, not once - without
-# this, one physical tag would pop the exit-scanner alarm (or spam the
-# "already registered"/"already pending" message on the entry side)
-# over and over for the same event instead of just once. Mirrors
+# How long to ignore repeat reads of the same tag, in either mode,
+# after processing one. A real UHF reader reports a tag many times a
+# second for as long as it's in range, not once - without this, one
+# physical tag would pop the exit-scanner alarm (or spam the "already
+# registered"/"already pending" message in Register mode) over and
+# over for the same event instead of just once. Mirrors
 # RESCAN_COOLDOWN_MS in the mobile app's and web dashboard's scan pages
 # (same 5 seconds).
 RESCAN_COOLDOWN_SECONDS = 5.0
@@ -82,13 +87,22 @@ class LinenApp:
         self.assign_pending_items = []
 
         # tag_id -> time.monotonic() of the last time it was processed
-        # at each checkpoint - see _handle_exit_scan()'s and
-        # _handle_entry_scan()'s cooldown checks, and
-        # RESCAN_COOLDOWN_SECONDS above. Separate dicts because the two
-        # checkpoints are independent - the same tag passing through
-        # both should still be handled at each.
+        # in each mode - see _handle_exit_scan()'s, _handle_entry_scan()'s,
+        # and _handle_assign_scan()'s cooldown checks, and
+        # RESCAN_COOLDOWN_SECONDS above. Separate dicts because the
+        # three modes are independent - the same tag scanned in
+        # Register mode and then later in another mode should still be
+        # handled at each.
         self._exit_last_seen = {}
         self._entry_last_seen = {}
+        self._assign_last_seen = {}
+
+        # Which mode the single physical scanner is currently in -
+        # None (nothing selected yet), "register", "assign", or "exit".
+        # Set by the Scanner Mode buttons (see _on_set_mode()). Tag
+        # reads that arrive before one is picked are ignored (see
+        # _poll_readers()) rather than guessed at.
+        self.scan_mode = None
 
         # tag_id -> status, for every currently-registered item -
         # rebuilt by _refresh_item_table() every time it runs (startup,
@@ -101,14 +115,13 @@ class LinenApp:
         # of items; a local lookup is instant.
         self._registered_items = {}
 
-        # RFID hardware - see hardware/ for the abstraction layer.
-        # Each role defaults to a SimulatedReader unless
-        # hardware_config.json configures a real serial port for it
+        # RFID hardware - see hardware/ for the abstraction layer. One
+        # physical scanner, shared between both modes (see the module
+        # docstring above) - defaults to a SimulatedReader unless
+        # hardware_config.json's "scanner" key configures a real one
         # (see hardware_config.example.json).
-        self.entry_reader = create_reader("entry_reader")
-        self.exit_reader = create_reader("exit_reader")
-        self._connect_reader(self.entry_reader)
-        self._connect_reader(self.exit_reader)
+        self.scanner = create_reader("scanner")
+        self._connect_reader(self.scanner)
 
         self._build_widgets()
         self._refresh_item_table()
@@ -117,9 +130,9 @@ class LinenApp:
         # serial port open until the process fully dies.
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        # Start the poll loop that drains both readers' queues. This
-        # is the only place tag reads (simulated or real) actually
-        # reach the GUI - see _poll_readers()'s docstring.
+        # Start the poll loop that drains the scanner's queue. This is
+        # the only place tag reads (simulated or real) actually reach
+        # the GUI - see _poll_readers()'s docstring.
         self._poll_readers()
 
     def _build_widgets(self):
@@ -188,43 +201,72 @@ class LinenApp:
         self.operator_entry = ttk.Entry(operator_frame, width=25)
         self.operator_entry.pack(side="left", padx=(6, 0))
 
-        # --- Scan section: real RFID reader input ---
+        # --- Scan section: item type + scanner mode controls ---
         scan_frame = ttk.Frame(content, padding=10)
         scan_frame.pack(fill="x")
 
         # A real UHF tag only carries a Tag ID - it doesn't say what
         # the item actually is. Staff pick that here before scanning;
-        # whatever's selected applies to the next tag read (see
-        # _handle_entry_scan()). Stays on the last-picked value after
-        # each scan, so scanning several of the same item type in a
-        # row doesn't need reselecting every time.
+        # whatever's selected applies to the next tag read in Register
+        # mode (see _handle_entry_scan()). Stays on the last-picked
+        # value after each scan, so scanning several of the same item
+        # type in a row doesn't need reselecting every time.
         ttk.Label(scan_frame, text="Item Type:").pack(side="left")
         self.item_type_combo = ttk.Combobox(scan_frame, values=ITEM_TYPES, state="readonly", width=14)
         self.item_type_combo.current(0)
         self.item_type_combo.pack(side="left")
 
-        # --- Real scanner input: for the actual USB RFID reader ---
-        # This reader (and every "USB scanner"/"keyboard wedge" reader
-        # like it) doesn't talk over a COM port - to the OS it's just a
-        # keyboard. It types the tag ID as keystrokes into whatever
-        # field currently has focus, then sends Enter. So instead of
-        # hardware/serial_reader.py's approach (open a port, parse raw
-        # bytes), all this needs is a plain Entry field to be focused
-        # when a tag is scanned - <Return> below is what actually reads
-        # the scan, whether it was typed by a person or a real reader.
-        # Goes through entry_reader.simulate_scan(), so
-        # _handle_entry_scan() is the single processing path for every
-        # tag - see its docstring for the duplicate-scan check this
-        # needed once a real reader was in the picture (a tag sitting
-        # in range gets read - and would get re-added - many times a
-        # second otherwise).
-        scan_frame2 = ttk.Frame(content, padding=(10, 0, 10, 10))
-        scan_frame2.pack(fill="x")
-        ttk.Label(scan_frame2, text="Scan / type Tag ID:").pack(side="left")
-        self.entry_tag_entry = ttk.Entry(scan_frame2, width=28)
-        self.entry_tag_entry.pack(side="left", padx=(6, 0))
-        self.entry_tag_entry.bind("<Return>", lambda event: self._on_entry_scan())
-        self.entry_tag_entry.focus_set()
+        # --- Scanner mode: which of three things a tag read means ---
+        # There's one physical scanner, so it can only mean one thing
+        # at a time - register incoming tags, queue an already-
+        # registered tag for Assign to Guest, or watch for tags
+        # leaving. Pressing a button here doesn't scan anything itself;
+        # it just decides where the *next* tag reads get routed (see
+        # _poll_readers() and _on_set_mode()). Whichever mode's button
+        # is disabled is the currently active one.
+        mode_frame = ttk.Frame(content, padding=(10, 0, 10, 10))
+        mode_frame.pack(fill="x")
+        ttk.Label(mode_frame, text="Scanner Mode:").pack(side="left")
+        self.register_mode_button = ttk.Button(
+            mode_frame, text="Register", command=lambda: self._on_set_mode("register")
+        )
+        self.register_mode_button.pack(side="left", padx=(6, 0))
+        self.assign_mode_button = ttk.Button(
+            mode_frame, text="Assign to Guest", command=lambda: self._on_set_mode("assign")
+        )
+        self.assign_mode_button.pack(side="left", padx=(6, 0))
+        self.exit_mode_button = ttk.Button(
+            mode_frame, text="Exit Scanner", command=lambda: self._on_set_mode("exit")
+        )
+        self.exit_mode_button.pack(side="left", padx=(6, 0))
+        self.mode_label = ttk.Label(
+            content,
+            text="Scanner mode: not selected - pick one of the buttons above before scanning.",
+            foreground="gray",
+        )
+        self.mode_label.pack(anchor="w", padx=10, pady=(0, 5))
+
+        # --- Manual test scan: only for a SimulatedReader ---
+        # A real scanner (see hardware/dll_bridge_reader.py and
+        # hardware/serial_reader.py) pushes tag reads straight onto its
+        # queue on its own - it never needs a focused text field to
+        # "type" a scan the way a USB keyboard-wedge reader would. This
+        # field only exists so the app can still be exercised without
+        # any hardware plugged in (hardware_config.json's "scanner" left
+        # unconfigured, or missing entirely). It's routed through
+        # exactly the same self.scanner.poll() path a real scan would
+        # use - see _poll_readers() - so whichever mode is selected
+        # above still decides what happens to it.
+        if isinstance(self.scanner, SimulatedReader):
+            manual_frame = ttk.Frame(content, padding=(10, 0, 10, 10))
+            manual_frame.pack(fill="x")
+            ttk.Label(manual_frame, text="Manual Test Scan (no hardware connected):").pack(side="left")
+            self.manual_tag_entry = ttk.Entry(manual_frame, width=24)
+            self.manual_tag_entry.pack(side="left", padx=(6, 0))
+            self.manual_tag_entry.bind("<Return>", lambda event: self._on_manual_test_scan())
+            ttk.Button(manual_frame, text="Scan", command=self._on_manual_test_scan).pack(
+                side="left", padx=(6, 0)
+            )
 
         # --- Pending scans: items scanned but not yet assigned ---
         # A live count rather than a static heading - with a real
@@ -270,25 +312,17 @@ class LinenApp:
         assign_button.grid(row=2, column=0, columnspan=2, pady=8)
 
         # --- Assign to Guest section: attach one customer/room to any
-        #     number of already-registered tags at once (scanned above
-        #     with the customer/room fields left blank, or being
-        #     reassigned to a different guest than before) - same
-        #     batch pattern as the Save section's pending list. ---
+        #     number of already-registered, not-yet-assigned tags at
+        #     once (queued by scanning them while Assign to Guest mode
+        #     is active - see the Scanner Mode row above and
+        #     _handle_assign_scan()) - same batch pattern as the Save
+        #     section's pending list. A tag already assigned to a
+        #     guest (status In Use) is rejected instead of queued -
+        #     use Edit Selected in Saved Items to correct one. ---
         assign_guest_frame = ttk.LabelFrame(
             content, text="Assign to Guest (already-registered tags)", padding=10
         )
         assign_guest_frame.pack(fill="x", padx=10, pady=(0, 10))
-
-        assign_lookup_row = ttk.Frame(assign_guest_frame)
-        assign_lookup_row.pack(fill="x")
-        ttk.Label(assign_lookup_row, text="Tag ID:").pack(side="left")
-        self.assign_tag_entry = ttk.Entry(assign_lookup_row, width=22)
-        self.assign_tag_entry.pack(side="left", padx=(6, 0))
-        self.assign_tag_entry.bind("<Return>", lambda event: self._on_assign_guest_lookup())
-        assign_add_button = ttk.Button(
-            assign_lookup_row, text="Add", command=self._on_assign_guest_lookup
-        )
-        assign_add_button.pack(side="left", padx=(6, 0))
 
         assign_pending_columns = ("tag_id", "item_type", "status")
         self.assign_pending_tree = ttk.Treeview(
@@ -329,21 +363,11 @@ class LinenApp:
 
         ttk.Separator(content, orient="horizontal").pack(fill="x", padx=10)
 
-        # --- Exit scanner section: simulates the RFID reader placed at
-        #     the exit. Any tag scanned here is treated as a theft. ---
-        exit_frame = ttk.Frame(content, padding=10)
-        exit_frame.pack(fill="x")
-
-        ttk.Label(exit_frame, text="Exit Scanner (simulated):").grid(
-            row=0, column=0, sticky="w"
-        )
-        self.exit_tag_entry = ttk.Entry(exit_frame, width=25)
-        self.exit_tag_entry.grid(row=0, column=1, padx=5)
-        # Pressing Enter here simulates a tag passing the exit reader.
-        self.exit_tag_entry.bind("<Return>", lambda event: self._on_exit_scan())
-
-        exit_button = ttk.Button(exit_frame, text="Simulate Exit Scan", command=self._on_exit_scan)
-        exit_button.grid(row=0, column=2, padx=5)
+        # Exit scanning no longer has its own section here - it's the
+        # "Exit Scanner" mode button up in the Scanner Mode row above
+        # (see _on_set_mode()/_handle_exit_scan()). A tag scanned while
+        # that mode is active is treated as a theft automatically;
+        # there's no separate manual field to trigger it with anymore.
 
         # --- Table of every linen item saved so far ---
         saved_header_frame = ttk.Frame(content)
@@ -455,55 +479,105 @@ class LinenApp:
             )
 
     def _on_close(self):
-        """Disconnect both readers cleanly (closing any open serial port) before exiting."""
-        self.entry_reader.disconnect()
-        self.exit_reader.disconnect()
+        """Disconnect the scanner cleanly (closing any open serial port/subprocess) before exiting."""
+        # So the web dashboard's status badge doesn't keep showing a
+        # stale mode after this app has actually quit - see
+        # _on_set_mode()'s comment on why this is best-effort.
+        try:
+            database.update_scanner_status(None)
+        except Exception as error:
+            print(f"Failed to update scanner status: {error}")
+        self.scanner.disconnect()
         self.root.destroy()
 
     def _poll_readers(self):
         """
         Runs on a repeating timer (tkinter's root.after) to drain any
         tag reads that have arrived since the last poll - from a
-        background thread for a real serial reader, or from a button
-        click / typed Tag ID for a simulated one. This is the only
-        safe way to get reader data into the GUI: tkinter widgets can
-        only be touched from the main thread, and this method always
-        runs on it.
+        background thread for a real reader, or from the manual test
+        field for a simulated one. This is the only safe way to get
+        reader data into the GUI: tkinter widgets can only be touched
+        from the main thread, and this method always runs on it.
+
+        Every read goes to whichever mode is currently selected (see
+        _on_set_mode()) - there's one physical scanner, so a read can't
+        mean "register this" and "this is leaving" (or "queue this for
+        Assign to Guest") at once. A read that arrives before any mode
+        is picked is dropped, with a status message explaining why,
+        rather than guessed at.
         """
-        for tag_id in self.entry_reader.poll():
-            self._handle_entry_scan(tag_id)
-        for tag_id in self.exit_reader.poll():
-            self._handle_exit_scan(tag_id)
+        for tag_id in self.scanner.poll():
+            if self.scan_mode == "register":
+                self._handle_entry_scan(tag_id)
+            elif self.scan_mode == "assign":
+                self._handle_assign_scan(tag_id)
+            elif self.scan_mode == "exit":
+                self._handle_exit_scan(tag_id)
+            else:
+                self.status_label.config(
+                    text=f"Ignored scan of {tag_id} - pick a Scanner Mode first."
+                )
         self.root.after(150, self._poll_readers)
 
-    def _on_entry_scan(self):
+    def _on_set_mode(self, mode):
         """
-        Called when Enter is pressed in the "Scan / type Tag ID" field
-        - either a person typed it, or (the actual point of this
-        field) a real USB RFID reader "typed" it and sent Enter on its
-        own. Pushes it through entry_reader.simulate_scan(), the same
-        queue a real reader would use, so _handle_entry_scan() below
-        is the single processing path either way. See the field's
-        comment in _build_widgets() for why a keyboard-wedge reader
-        needs a focused text field instead of the serial/COM-port
-        handling hardware/serial_reader.py has.
+        Called when a Scanner Mode button is clicked. Doesn't scan
+        anything itself - just decides where the *next* tag reads from
+        the one physical scanner get routed (see _poll_readers()). The
+        disabled button always shows which mode is currently active.
         """
-        tag_id = self.entry_tag_entry.get().strip().upper()
+        self.scan_mode = mode
+        if mode == "register":
+            self.mode_label.config(
+                text="Scanner mode: REGISTER - scanned tags are added to the pending list below.",
+                foreground="blue",
+            )
+        elif mode == "assign":
+            self.mode_label.config(
+                text="Scanner mode: ASSIGN TO GUEST - scanned tags are queued in the list below.",
+                foreground="purple",
+            )
+        else:
+            self.mode_label.config(
+                text="Scanner mode: EXIT SCANNER - scanned tags are checked for theft.",
+                foreground="red",
+            )
+        self.register_mode_button.state(["disabled" if mode == "register" else "!disabled"])
+        self.assign_mode_button.state(["disabled" if mode == "assign" else "!disabled"])
+        self.exit_mode_button.state(["disabled" if mode == "exit" else "!disabled"])
 
-        self.entry_tag_entry.delete(0, tk.END)
-        self.entry_tag_entry.focus_set()
+        # Best-effort, like _log_event() - this is purely so the web
+        # dashboard can show a live "what's the desktop scanner doing
+        # right now" badge (see hooks/use-scanner-status.ts there). A
+        # failure here should never block the mode switch itself.
+        try:
+            database.update_scanner_status(mode)
+        except Exception as error:
+            print(f"Failed to update scanner status: {error}")
+
+    def _on_manual_test_scan(self):
+        """
+        Called from the Manual Test Scan field/button - only present
+        at all when self.scanner is a SimulatedReader (no hardware
+        connected; see _build_widgets()). Pushes the typed Tag ID
+        through self.scanner.simulate_scan(), the exact same queue a
+        real scan would use, so _poll_readers() routes it to whichever
+        mode is currently selected exactly as it would a real read.
+        """
+        tag_id = self.manual_tag_entry.get().strip().upper()
+
+        self.manual_tag_entry.delete(0, tk.END)
+        self.manual_tag_entry.focus_set()
 
         if not tag_id:
             return
 
-        self.entry_reader.simulate_scan(tag_id)
+        self.scanner.simulate_scan(tag_id)
 
     def _handle_entry_scan(self, tag_id):
         """
-        Called for every tag read from the entry reader - whether it
-        came from a real reader running in serial mode, or the "Scan /
-        type Tag ID" field (a real keyboard-wedge reader, or someone
-        typing by hand). Adds the tag to the pending list (with
+        Called for every tag read from the scanner while Register mode
+        is active. Adds the tag to the pending list (with
         whatever Item Type is currently selected in the dropdown),
         waiting to be assigned to a customer and room - unless it's
         already registered, or already sitting in this pending list.
@@ -673,33 +747,51 @@ class LinenApp:
         self.status_label.config(text=message)
         self._refresh_item_table()
 
-    def _on_assign_guest_lookup(self):
+    def _handle_assign_scan(self, tag_id):
         """
-        Called when clicking "Add" (or pressing Enter in the Tag ID
-        field) in the Assign to Guest section. Looks up an already-
-        registered tag and queues it in the list below, waiting for
-        one Customer Name + Room Number to be applied to everything
-        queued at once - mirrors the Save section's pending list,
-        just for tags that already exist in the database instead of
-        new ones.
-        """
-        tag_id = self.assign_tag_entry.get().strip().upper()
-        self.assign_tag_entry.delete(0, tk.END)
-        self.assign_tag_entry.focus_set()
+        Called for every tag read from the scanner while Assign to
+        Guest mode is active. Looks up an already-registered tag and
+        queues it in the list below, waiting for one Customer Name +
+        Room Number to be applied to everything queued at once -
+        mirrors Register mode's pending list, just for tags that
+        already exist in the database instead of new ones.
 
-        if not tag_id:
-            return
+        Only unassigned tags (status Storage or Laundry) can be queued
+        this way - a tag that's already In Use (assigned to a guest)
+        is rejected instead, so scanning it a second time in this mode
+        can't silently hand it to a different guest. Use Edit Selected
+        in Saved Items if a guest/room genuinely needs correcting.
+
+        Uses a status message rather than a blocking messagebox for
+        both rejection cases, same reasoning as _handle_entry_scan()/
+        _handle_exit_scan(): a real reader re-reads a tag many times a
+        second while it's in range, and a modal dialog would otherwise
+        need dismissing over and over for the same tag.
+        """
+        now = time.monotonic()
+        last_seen = self._assign_last_seen.get(tag_id)
+        if last_seen is not None and now - last_seen < RESCAN_COOLDOWN_SECONDS:
+            return  # same tag, still within the cooldown window - ignore
+        self._assign_last_seen[tag_id] = now
 
         already_queued = any(existing.tag_id == tag_id for existing in self.assign_pending_items)
         if already_queued:
-            self.status_label.config(text=f"{tag_id} is already in the list.")
+            self.status_label.config(text=f"{tag_id} is already in the assign list.")
             return
 
         item = database.get_item_by_tag(tag_id)
         if item is None:
-            messagebox.showwarning(
-                "Not Registered",
-                f"{tag_id} isn't registered yet - register it above first.",
+            self.status_label.config(
+                text=f"{tag_id} isn't registered yet - register it first, then assign it."
+            )
+            return
+
+        if item.status == STATUS_IN_USE:
+            self.status_label.config(
+                text=(
+                    f"{tag_id} is already assigned to {item.customer_name} (Room {item.room_number}) - "
+                    "use Edit Selected in Saved Items to change it."
+                )
             )
             return
 
@@ -783,43 +875,12 @@ class LinenApp:
         self.status_label.config(text=f"Assigned {assigned_count} item(s) to {customer_name}.")
         self._refresh_item_table()
 
-    def _on_exit_scan(self):
-        """
-        Called when Enter is pressed or "Simulate Exit Scan" is
-        clicked in the exit scanner field.
-
-        Only does anything while the exit reader is running in
-        simulated mode - pushes the typed Tag ID through the same
-        queue a real reader would use, so _handle_exit_scan() below is
-        the single code path either way.
-        """
-        if not isinstance(self.exit_reader, SimulatedReader):
-            messagebox.showinfo(
-                "Real reader active",
-                "The exit reader is configured for real hardware in "
-                "hardware_config.json - it scans automatically. This field "
-                "only does something in simulated mode.",
-            )
-            return
-
-        tag_id = self.exit_tag_entry.get().strip().upper()
-
-        if not tag_id:
-            messagebox.showwarning("Missing Tag ID", "Please enter a Tag ID.")
-            return
-
-        self.exit_reader.simulate_scan(tag_id)
-
-        self.exit_tag_entry.delete(0, tk.END)
-        self.exit_tag_entry.focus()
-
     def _handle_exit_scan(self, tag_id):
         """
-        Called for every tag read from the exit reader - whether it
-        came from a real scan or the manual exit scanner field. Any
-        tag detected here is treated as leaving the building, so it's
-        run through detector.py and, if flagged, alarm.py shows a
-        pop-up warning.
+        Called for every tag read from the scanner while Exit Scanner
+        mode is active. Any tag detected here is treated as leaving
+        the building, so it's run through detector.py and, if flagged,
+        alarm.py shows a pop-up warning.
 
         A real reader keeps reading the same tag many times a second
         for as long as it's in range, not just once - without a

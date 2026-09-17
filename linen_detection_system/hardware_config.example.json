@@ -1,8 +1,5 @@
 {
-  "entry_reader": {
-    "type": "simulated"
-  },
-  "exit_reader": {
+  "scanner": {
     "type": "simulated"
   }
 }
