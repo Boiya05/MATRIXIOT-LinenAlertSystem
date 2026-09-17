@@ -1,0 +1,10 @@
+# Extra dependencies for running the test suite (tests/) - not needed
+# to run the app itself, only to verify hardware/uhfreader18_protocol.py
+# and hardware/serial_reader.py.
+#
+# Install with: pip install -r requirements-dev.txt
+# Run tests with: pytest tests/ -v
+
+-r requirements.txt
+
+pytest==9.1.1

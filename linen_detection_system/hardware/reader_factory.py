@@ -11,8 +11,16 @@ import json
 import os
 import sys
 
+from .dll_bridge_reader import DllBridgeReader
 from .serial_reader import SerialRFIDReader
 from .simulated_reader import SimulatedReader
+
+# Default location of a 32-bit Python interpreter for DllBridgeReader -
+# see its own docstring for why one is needed at all. Overridable per
+# reader via hardware_config.json's "python32_path", since this is
+# just where `winget install --id Python.Python.3.11 --architecture x86`
+# happens to have put it on the machine this was set up on.
+_DEFAULT_PYTHON32_PATH = r"C:\Users\Administrator\AppData\Local\Programs\Python\Python311-32\python.exe"
 
 
 def _get_base_dir():
@@ -57,9 +65,11 @@ def create_reader(role):
             top-level keys in hardware_config.json.
 
     Returns:
-        RFIDReader: a SimulatedReader (the default), or a
-        SerialRFIDReader if hardware_config.json sets this role's
-        "type" to "serial".
+        RFIDReader: a SimulatedReader (the default), a SerialRFIDReader
+        if hardware_config.json sets this role's "type" to "serial",
+        or a DllBridgeReader if set to "uhfreader18_dll" - see
+        DllBridgeReader's own docstring for which reader units actually
+        need that third option.
     """
     config = _load_hardware_config().get(role, {"type": "simulated"})
     reader_type = config.get("type", "simulated")
@@ -68,7 +78,21 @@ def create_reader(role):
         return SerialRFIDReader(
             role=role,
             port=config["port"],
-            baud_rate=config.get("baud_rate", 115200),
+            # 57600bps is the RD905UW/UHFReader18 protocol's documented
+            # default (see hardware/serial_reader.py) - not a generic
+            # serial guess, so that's the fallback if a config omits it.
+            baud_rate=config.get("baud_rate", 57600),
+            address=config.get("address", 0x00),
+            poll_interval=config.get("poll_interval", 0.2),
+        )
+
+    if reader_type == "uhfreader18_dll":
+        return DllBridgeReader(
+            role=role,
+            port=config["port"],
+            python32_path=config.get("python32_path", _DEFAULT_PYTHON32_PATH),
+            baud=config.get("baud_rate", 57600),
+            address=config.get("address", 0xFF),
         )
 
     return SimulatedReader(role)

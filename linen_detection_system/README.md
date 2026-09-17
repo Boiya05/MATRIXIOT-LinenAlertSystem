@@ -340,29 +340,98 @@ typing something else into the field is never mangled.
   above).
 - `hardware/serial_reader.py` is the real-hardware path: a generic
   serial (COM port) transport that opens the port and reads it on a
-  background thread. **The actual protocol - how to interpret the raw
-  bytes a specific reader model sends - is deliberately left as a
-  placeholder**, isolated in two clearly marked methods:
-  - `_send_startup_commands()` - some readers need a command sent
-    before they start streaming tag reads; this is a no-op until
-    filled in.
-  - `_parse_tag_from_frame()` - turns one raw frame of bytes into a
-    Tag ID string. The placeholder assumes plain newline-delimited
-    ASCII text, which works for simple modules but not typical UHF
-    readers (binary frames, checksums, multiple tags per burst, etc).
+  background thread.
+- `hardware/uhfreader18_protocol.py` is the actual reader protocol -
+  the MS9 package's RD905UW, which speaks the "UHFReader18" binary
+  frame protocol (`Len|Adr|Cmd|Data[]|CRC16`) over RS232, RS485, or
+  TCP. It's a pure, hardware-free module (no serial/socket code at
+  all) that builds command frames and parses response frames -
+  `serial_reader.py` is the only thing that calls into it. See its
+  module docstring for the exact frame layout and which manual
+  sections it's built from.
 
-  **Once a reader model is chosen, only these two methods need to be
-  rewritten** - the port-opening, threading, and everything else in
-  `main.py` stays exactly as-is.
+  The RD905UW is factory-fixed to **Answer Mode**: it never streams
+  data on its own, so `serial_reader.py`'s read loop sends an
+  Inventory command and reads back exactly one response every cycle,
+  rather than passively listening (see `_poll_once()`). `connect()`
+  also sends a one-off Get Reader Information request as a
+  self-test - if the reply doesn't parse as a real UHFReader18-protocol
+  response (wrong COM port, wrong baud rate, a different device
+  entirely), it fails immediately with a clear message instead of
+  silently polling a connection that will never produce a tag read.
 - `hardware/reader_factory.py` reads `hardware_config.json` and builds
   a `SimulatedReader` or `SerialRFIDReader` for each role accordingly.
+
+**Verifying the protocol implementation (no reader or adapter needed):**
+
+```
+pip install -r requirements-dev.txt
+python -m pytest -v
+```
+
+(Use `python -m pytest`, not a bare `pytest` - pip installs `pytest.exe`
+into a `Scripts\` directory that isn't on PATH by default on this
+machine, so the bare command gives "pytest is not recognized". The
+`-m` form doesn't depend on PATH at all.)
+
+`tests/test_uhfreader18_protocol.py` checks the CRC-16 and frame
+parsing against a real frame captured straight from the MS9 package's
+own config guides (not just against the algorithm description), plus
+edge cases (no tag in range, multiple tags in one read, corrupted CRC,
+truncated data, wrong reader responding). `tests/test_serial_reader.py`
+drives `SerialRFIDReader` against a fake stand-in for the serial port
+to verify the actual write-command/read-response wiring.
+`tests/test_socket_integration.py` goes one layer further and uses
+**real pyserial I/O** over a real socket (see below). Re-run all of it
+any time - after touching either file, or once real hardware is
+connected, as a fast sanity check before troubleshooting further.
+
+**Running the whole app against a fake reader (no hardware at all):**
+
+`tools/fake_rd905uw.py` impersonates the physical reader, speaking the
+real UHFReader18 protocol over a TCP socket - so the entire app (GUI,
+detector, database, alerts, mobile app) can be exercised end to end
+with tag reads you control by typing. It validates the CRC of every
+command the app sends, so it catches malformed frames exactly as real
+hardware would.
+
+1. In one terminal:
+
+   ```
+   python tools/fake_rd905uw.py
+   ```
+
+2. Point a checkpoint at it in `hardware_config.json` - note the
+   `socket://` URL in place of a COM port:
+
+   ```json
+   {
+     "entry_reader": { "type": "simulated" },
+     "exit_reader": { "type": "serial", "port": "socket://127.0.0.1:5000" }
+   }
+   ```
+
+3. In another terminal, run the app as usual (`python main.py`). Watch
+   for the `[exit_reader] Connected: reader firmware v2.36...` line.
+
+4. Back in the fake reader's terminal, type a tag ID and press Enter to
+   put it "in range"; type it again to take it away. `list`, `clear`
+   and `quit` also work. Whatever is in range gets reported to the app
+   on its next poll, exactly as a real tag sitting in the reader's
+   field would be.
+
+This works because `connect()` uses pyserial's `serial_for_url()`, so a
+port can be a plain COM name *or* a pyserial URL. The same mechanism
+would let the RD905UW's optional RJ45/TCP interface be used instead of
+RS485 (`"port": "socket://192.168.1.192:6000"`).
 
 **Switching a checkpoint to real hardware:**
 
 1. Copy `hardware_config.example.json` to `hardware_config.json` if
    you haven't already.
 2. Set the role's `type` to `"serial"` and fill in its COM port (check
-   Windows Device Manager once the reader is plugged in) and baud rate:
+   Windows Device Manager once the reader/adapter is plugged in).
+   Everything except `port` has a sensible default and can be omitted:
 
    ```json
    {
@@ -370,19 +439,28 @@ typing something else into the field is never mangled.
      "exit_reader": {
        "type": "serial",
        "port": "COM3",
-       "baud_rate": 115200
+       "baud_rate": 57600,
+       "address": 0,
+       "poll_interval": 0.2
      }
    }
    ```
 
+   | Key | Default | What it's for |
+   |---|---|---|
+   | `port` | *(required)* | COM port, e.g. `"COM3"` |
+   | `baud_rate` | `57600` | The RD905UW's documented default |
+   | `address` | `0` | Reader address - only matters if several readers share one RS485 bus |
+   | `poll_interval` | `0.2` | Seconds between reads. Don't set this to 0 - the reader answers instantly whenever a tag is in range, so an unpaced loop hammers the bus and floods the queue (see `serial_reader.py`) |
+
 3. `pip install -r requirements.txt` if you haven't already run it
    since `pyserial` was added.
-4. Fill in `_send_startup_commands()` and `_parse_tag_from_frame()` in
-   `hardware/serial_reader.py` per your reader's protocol datasheet.
-5. Run the app. A reader set to `"serial"` scans automatically in the
+4. Run the app. A reader set to `"serial"` scans automatically in the
    background - its GUI control (the Scan button or exit field) shows
    a message instead of acting, since manual input only applies in
-   simulated mode.
+   simulated mode. If it can't connect, a warning dialog shows exactly
+   why (wrong port, wrong baud, no response) instead of the app
+   crashing or silently doing nothing.
 
 `hardware_config.json` is machine-specific (COM ports differ per PC),
 so like the other config files it's listed in `.gitignore` and never
@@ -390,13 +468,76 @@ committed - only `hardware_config.example.json` is. A missing
 `hardware_config.json` is not an error - it just means both
 checkpoints stay simulated, same as before this layer existed.
 
-**Known open question, not yet decided:** a real UHF tag typically only
-carries a Tag ID (its EPC) - not a human-readable item type like
-"Bath Towel". `main.py`'s `_resolve_item_type()` is a placeholder that
-currently guesses randomly, same as the old fully-simulated behavior.
-Once real tags are in use, this needs a real answer - most likely
-either a dropdown for staff to pick the type at registration time, or
-a separate tag_id → item_type lookup maintained elsewhere.
+**If `"serial"` doesn't work - a third reader type, `"uhfreader18_dll"`:**
+
+The real reader unit this was actually tested against (firmware v5.2,
+reporting reader type `0x86`) **rejects** the plain Inventory command
+that `serial_reader.py`/`uhfreader18_protocol.py` sends, with status
+`0xFE` ("illegal command") - confirmed to be a genuine incompatibility
+with this specific unit, not a bug here: the vendor's own **64-bit**
+`UHFReader18.dll` fails identically against it. Only the vendor's
+**32-bit** DLL build actually works (confirmed reading 100+ real tags
+correctly, both via the vendor's own demo software and via this app).
+
+A 32-bit DLL can't be loaded into this app's 64-bit Python process via
+`ctypes`, and this app's other dependencies (`supabase`, etc.) don't
+have straightforward 32-bit Windows wheels - building `cryptography`
+from source for 32-bit Windows fails outright (a Rust/MSVC linker
+issue, `/SAFESEH` incompatibility). So rather than forcing the whole
+app onto 32-bit Python, `hardware/dll_bridge_reader.py` launches a
+tiny, dependency-free helper (`hardware/vendor/dll_bridge.py`) as a
+**subprocess** under a separate 32-bit Python interpreter, and reads
+tag EPCs from its stdout, one per line. Everything else (the GUI,
+Supabase, the audit trail) stays on the app's normal 64-bit Python -
+this is the only piece that needs to be 32-bit, and it's isolated to
+its own process.
+
+If your reader unit works fine with the plain `"serial"` type above,
+you don't need any of this - it's specifically for units that hit the
+same `0xFE` wall this one did.
+
+1. Install a 32-bit Python interpreter (separate from the one running
+   the app):
+   ```
+   winget install --id Python.Python.3.11 --architecture x86
+   ```
+2. Set the role's `type` to `"uhfreader18_dll"` and fill in its COM
+   port number (as an int, not a string):
+   ```json
+   {
+     "entry_reader": { "type": "simulated" },
+     "exit_reader": {
+       "type": "uhfreader18_dll",
+       "port": 5,
+       "baud_rate": 57600,
+       "address": 255,
+       "python32_path": "C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python311-32\\python.exe"
+     }
+   }
+   ```
+
+   | Key | Default | What it's for |
+   |---|---|---|
+   | `port` | *(required)* | COM port **number** (`5` for COM5), not a string |
+   | `baud_rate` | `57600` | Same default as `"serial"` |
+   | `address` | `255` (0xFF, broadcast) | Works regardless of the unit's actual configured address - the vendor's own demo software defaults to this for the same reason |
+   | `python32_path` | the path `winget` installs to above | Only needed if your 32-bit Python ended up somewhere else |
+
+3. `hardware/vendor/UHFReader18_x86.dll` is already bundled in this
+   repo (copied from a working demo install) - nothing else to
+   install for the bridge script itself, since it has zero
+   dependencies beyond the Python standard library.
+4. Run the app as usual. Watch for
+   `[exit_reader] Connected via DLL bridge: firmware v5.2, type 0x86, ...`
+   instead of the plain `Connected:` line `"serial"` prints.
+
+**How item type is determined:** a real UHF tag only carries a Tag ID
+(its EPC), not a human-readable type like "Bath Towel". That's
+resolved by having staff pick the type at registration time: the
+**Item Type** dropdown next to the scan field (`ITEM_TYPES` in
+`main.py`) is read whenever a tag is scanned in, so each pending item
+carries the type that was selected when it was scanned. Nothing needs
+to be encoded on the tag itself.
 
 ## Current status
 
@@ -407,9 +548,16 @@ Everything described above is implemented and working:
 - **main.py** - scan / batch-assign / status / exit-scan GUI, wired to
   the hardware layer below rather than generating scans itself
 - **hardware/** - RFID reader abstraction (see **Hardware setup**
-  above); both checkpoints run in simulated mode by default, with the
-  serial transport built out and ready for a real reader once one is
-  chosen - only its protocol parsing is still a placeholder
+  above); both checkpoints run in simulated mode by default.
+  `uhfreader18_protocol.py` implements the RD905UW/UHFReader18 wire
+  protocol and is covered by `tests/` (verified against a real
+  captured frame from the MS9 docs); `serial_reader.py` wires it up to
+  an actual COM port. Now verified end to end against real physical
+  hardware over a real USB-to-RS485 adapter - a full register → hold
+  a real tag at the exit → alarm → `theft_alerts` row pass, using the
+  `dll_bridge_reader.py` path (see **If "serial" doesn't work** above)
+  since this specific unit doesn't accept `serial_reader.py`'s plain
+  Inventory command
 - **detector.py** - flags exit scans based on registration + status
 - **alarm.py** - pop-up warning + WhatsApp notification, confirmed
   delivering via Twilio's WhatsApp Sandbox (a fixed-content template,
@@ -425,10 +573,11 @@ Supabase tables for live viewing (Home stats, rooms/categories, and
 theft alerts synced in real time via Supabase Realtime).
 
 Possible next steps:
-- Picking a real UHF reader model and filling in
-  `hardware/serial_reader.py`'s two placeholder methods (see
-  **Hardware setup**) - this is the one piece intentionally left
-  undone until a reader is chosen
+- Confirming `hardware/uhfreader18_protocol.py` and
+  `hardware/serial_reader.py` against the physical RD905UW once the
+  RS485-to-USB adapter arrives - everything so far is verified against
+  the documented protocol and a real captured frame (`tests/`), but not
+  yet against the actual reader hardware
 - Deciding how item type is determined from a real tag (dropdown at
   registration vs. a tag_id → item_type lookup - see **Hardware
   setup**'s open question)
