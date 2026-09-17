@@ -47,8 +47,8 @@ SCANNER_STATUS_TABLE_NAME = "scanner_status"
 SCANNER_STATUS_ROW_ID = "desktop"
 
 # Guards every actual network call made through the shared client below
-# (see _execute()). alarm.py's trigger_alarm() fires Telegram, WhatsApp,
-# and Supabase logging on separate daemon threads at the same time -
+# (see _execute()). alarm.py's trigger_alarm() fires Telegram and
+# Supabase logging on separate daemon threads at the same time -
 # on purpose, so a slow network call can't delay the on-screen alarm
 # popup - and two of those threads hitting this client's connection
 # pool at the exact same instant was observed to raise a spurious

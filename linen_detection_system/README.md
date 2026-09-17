@@ -1,14 +1,13 @@
 # Linen RFID Detection System
 
 A Python project for detecting stolen linen items (towels, sheets, etc.)
-using RFID tags. There's no physical RFID reader wired in yet - scanning
-defaults to simulated buttons in a pop-up window - but the app is built
-around a generic hardware abstraction (see **Hardware setup** below) so a
-real serial UHF reader can be plugged in later without touching the rest
-of the app. Theft alerts show up as both an on-screen warning and a
-WhatsApp message to your phone. Data is stored in a shared Supabase
-database, so the same items are visible from this desktop app and the
-mobile companion app.
+using RFID tags. Talks to a real physical UHF RFID scanner (see
+**Hardware setup** below), or falls back to a manual test field when
+none is configured. Theft alerts show up as both an on-screen warning
+and a Telegram message to your phone. Data is stored in a shared
+Supabase database, so the same items are visible from this desktop
+app, the mobile companion app, and the [web
+dashboard](../linen-web-dashboard/).
 
 ## Project structure
 
@@ -17,19 +16,24 @@ linen_detection_system/
 ├── main.py                       # Program entry point - opens the GUI window
 ├── database.py                   # Saves/reads linen items via the Supabase database
 ├── detector.py                   # Theft-detection logic (exit-scan rule)
-├── alarm.py                      # Pop-up + WhatsApp alerts for flagged scans
+├── alarm.py                      # Pop-up + Telegram alerts for flagged scans
 ├── models.py                     # Defines data structures (currently: LinenItem)
 ├── hardware/                     # RFID reader abstraction - see "Hardware setup" below
 │   ├── base.py                   # RFIDReader interface every reader implements
-│   ├── simulated_reader.py       # Button/typed-input driven fake reader (today's default)
-│   ├── serial_reader.py          # Generic serial transport + isolated protocol placeholder
-│   └── reader_factory.py         # Builds the right reader per role from hardware_config.json
+│   ├── simulated_reader.py       # Manual-test-field driven fake reader (default when unconfigured)
+│   ├── serial_reader.py          # Generic serial transport + the UHFReader18 protocol
+│   ├── uhfreader18_protocol.py   # Pure frame-building/parsing for that protocol
+│   ├── dll_bridge_reader.py      # For reader units the plain protocol doesn't work against
+│   ├── reader_factory.py         # Builds the right reader from hardware_config.json
+│   └── vendor/                   # Vendor 32-bit DLL + bridge script - see dll_bridge_reader.py
+├── tests/                        # pytest suite for the hardware layer (see requirements-dev.txt)
+├── tools/fake_rd905uw.py         # Fake reader for exercising the app with no hardware at all
 ├── requirements.txt              # Python package dependencies
-├── whatsapp_config.json          # Your real Twilio credentials (not committed)
-├── whatsapp_config.example.json  # Template showing the expected format
+├── telegram_config.json          # Your real Telegram bot credentials (not committed)
+├── telegram_config.example.json  # Template showing the expected format
 ├── supabase_config.json          # Your real Supabase project URL + key (not committed)
 ├── supabase_config.example.json  # Template showing the expected format
-├── hardware_config.json          # Your real reader config, per checkpoint (not committed)
+├── hardware_config.json          # Your real reader config (not committed)
 ├── hardware_config.example.json  # Template showing the expected format
 ├── .gitignore                    # Keeps the real config files above out of git
 └── README.md                     # This file
@@ -46,8 +50,8 @@ linen_detection_system/
   pip install -r requirements.txt
   ```
 
-- WhatsApp alerts use only Python's built-in `urllib`/`base64`, no
-  extra package needed there.
+- Telegram alerts use only Python's built-in `urllib`, no extra
+  package needed there.
 
 ## How to run (PowerShell)
 
@@ -80,20 +84,18 @@ deleting, triggering an alert) in the `linen_item_events` audit trail
 app's README ("Audit trail (who did what, and when)") for the full
 setup and what gets logged where.
 
-**Registering items (scan + batch save):**
+There's one physical scanner and three **Scanner Mode** buttons -
+**Register**, **Assign to Guest**, **Exit Scanner** - that decide what
+the next tag reads mean. See **Hardware setup** below for the full
+explanation; the short version is in each section below.
+
+**Registering items (Register mode + batch save):**
 - Pick an **Item Type** first - a real UHF tag only carries an ID, not
   what the item actually is, so this is what tells the app that (and
   is the only thing sorting a tag into a category actually requires).
-- Use the **Scan / type Tag ID** field for an actual USB RFID reader -
-  the "keyboard wedge" kind that just types the tag ID and presses
-  Enter, no COM port or configuration needed (this is the first reader
-  type this app supports for real - see **Hardware setup** below).
-  Click into the field once so it has focus, then scan away; it clears
-  and refocuses itself after each tag, and a tag still sitting in
-  range - which a real reader reads many times a second, not once -
-  only gets added to the pending list the first time, not once per
-  read. No reader on hand? Type a Tag ID by hand and press Enter -
-  same field, same result.
+- Press **Register**, then scan tags - a tag still sitting in range,
+  which a real reader reads many times a second, only gets added to
+  the pending list the first time, not once per read.
 - **A tag that's already registered can't be registered again** -
   scanning one shows its current status in the status line instead of
   adding it to the pending list. Re-registering it would silently
@@ -118,20 +120,20 @@ setup and what gets logged where.
   with them blank to register the pending tags as unassigned stock -
   sorted into a category by Item Type alone, status **Storage** - and
   attach a guest to them later. Fill them in first to also assign a
-  guest in this same step, same as this always used to work; either
-  way the pending list clears and the items show up in the **Saved
-  Items** table.
+  guest in this same step; either way the pending list clears and the
+  items show up in the **Saved Items** table.
 
-**Assign to Guest (already-registered tags):** a separate section, batch
+**Assign to Guest (Assign to Guest mode):** a separate section, batch
 like the Save section above, for attaching one Customer Name + Room
-Number to any number of tags that are already in the database - either
-stock that was registered without one above, or items being handed to
-a different guest than before. Scan or type a Tag ID and click **Add**
-(or press Enter) to queue it - repeat for as many tags as this guest
-is getting - then fill in Customer Name + Room Number and click
-**Assign to Guest** to apply both to everything queued at once. Flips
-each item's status to **In Use**. Scanning a tag that isn't registered
-yet tells you instead of guessing - register it above first.
+Number to any number of tags that are already in the database and not
+yet assigned to a guest - stock that was registered without one above.
+Press **Assign to Guest**, then scan tags to queue them - repeat for as
+many tags as this guest is getting - then fill in Customer Name + Room
+Number and click **Assign to Guest** to apply both to everything queued
+at once. Flips each item's status to **In Use**. Scanning a tag that
+isn't registered yet, or one that's already assigned to a guest, tells
+you instead of queuing it - register it above first, or use **Edit
+Selected** to correct an existing assignment.
 
 **Item status:**
 - Every saved item has a status shown in the Saved Items table:
@@ -142,10 +144,9 @@ yet tells you instead of guessing - register it above first.
 - Select a row and click **Mark In Use** / **Mark Laundry** / **Mark
   Storage** to switch its status.
 
-**Exit scanner (theft detection):**
-- Type or scan a Tag ID into the **Exit Scanner** box and press Enter
-  (or click **Simulate Exit Scan**) - same real-reader-or-typed-by-hand
-  field as the entry side.
+**Exit scanner (Exit Scanner mode - theft detection):**
+- Press **Exit Scanner**, then scan a tag - same field/mode-routing
+  every other mode uses.
 - `detector.py`'s rule: a scan is flagged as a possible theft only if
   the tag is **registered** and its status is anything other than
   **Laundry** or **Storage** (in practice, that means **In Use**). An
@@ -155,7 +156,7 @@ yet tells you instead of guessing - register it above first.
   it meaning anything.
 - A flagged scan triggers `alarm.py`:
   - An on-screen "⚠ THEFT ALERT ⚠" pop-up with the item's details
-  - A matching WhatsApp message sent to your phone via Twilio
+  - A matching Telegram message sent to your phone
 - A real reader reads the same tag many times a second for as long as
   it's in range - a 5-second cooldown per tag
   (`RESCAN_COOLDOWN_SECONDS` in `main.py`) means one tag walking past
@@ -206,96 +207,48 @@ this up (or re-set it up on another machine):
 `supabase_config.json` is listed in `.gitignore` so it's never
 committed - only `supabase_config.example.json` (with placeholder
 values) is meant to be shared/committed. Handle this file with the
-same care as `whatsapp_config.json`.
+same care as `telegram_config.json`.
 
 If `supabase_config.json` is missing or the connection fails, the app
 shows a clear pop-up on startup explaining the problem instead of
 crashing with a raw error.
 
-## WhatsApp alerts setup
+## Telegram alerts setup
 
-Theft alerts are sent to your phone through Twilio's **WhatsApp
-Sandbox** - a free tier meant for personal/development use, not for
-messaging your own guests or customers (it only reaches numbers that
-have explicitly joined your sandbox). To set this up:
+Theft alerts are sent to your phone through a Telegram bot - free, no
+sandbox/trial limitations, and unlike a WhatsApp-via-Twilio integration
+this project used to also have (removed - it wasn't being used), a
+Telegram message can carry the actual alert text (tag/customer/room/
+item), not just a fixed template. To set this up:
 
-1. Create a free account at [twilio.com](https://www.twilio.com).
-2. In the Twilio Console, go to **Messaging → Try it out → Send a
-   WhatsApp message** to activate the sandbox. You'll be given a
-   Twilio phone number and a join code that looks like
-   `join <two-words>`.
-3. From the phone that should receive alerts, send that exact join
-   code as a WhatsApp message to the sandbox number shown. Twilio
-   confirms once it's joined - this step only needs doing once per
-   phone number, but sandbox sessions can expire after a period of
-   inactivity, at which point you'll need to rejoin.
-4. From the Twilio Console's dashboard, copy your **Account SID** and
-   **Auth Token** (**Account → API keys & tokens**, or right on the
-   main Console homepage).
-5. Copy `whatsapp_config.example.json` to `whatsapp_config.json` and
+1. In Telegram, message [@BotFather](https://t.me/BotFather) and send
+   `/newbot`, following its prompts to name your bot. It replies with a
+   **bot token** (looks like `123456789:AAEhBOweik6ad6PsYlUfd...`) -
+   copy it.
+2. Message your new bot directly (search its username, send it
+   anything, e.g. "hi") so it has a conversation to reply into -
+   Telegram bots can't message a user first.
+3. Find your **chat ID**: open
+   `https://api.telegram.org/bot<your_bot_token>/getUpdates` in a
+   browser right after step 2 - the JSON response includes
+   `"chat":{"id": ...}`, that number is your chat ID.
+4. Copy `telegram_config.example.json` to `telegram_config.json` and
    fill in your real values:
 
    ```json
    {
-     "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-     "auth_token": "your_twilio_auth_token",
-     "from_number": "whatsapp:+14155238886",
-     "to_number": "whatsapp:+10000000000"
+     "bot_token": "123456789:AAEhBOweik6ad6PsYlUfd...",
+     "chat_id": "123456789"
    }
    ```
 
-   `from_number` is Twilio's sandbox number - **don't assume it's the
-   commonly-documented `+14155238886`, confirm it in your own Console**;
-   Twilio can assign a different sandbox number per account/region (a
-   real gotcha that cost real debugging time getting this working -
-   ours turned out to be a `+1737...` number, not the usual one).
-   `to_number` is the phone that joined the sandbox in step 3, in
-   international format with a `whatsapp:` prefix, e.g.
-   `whatsapp:+15551234567`.
-
-`whatsapp_config.json` is listed in `.gitignore` so it's never
-committed alongside source code - only `whatsapp_config.example.json`
+`telegram_config.json` is listed in `.gitignore` so it's never
+committed alongside source code - only `telegram_config.example.json`
 (with placeholder values) is meant to be shared/committed.
 
-If `whatsapp_config.json` is missing or invalid, `alarm.py` just prints
-a warning and skips the WhatsApp message - the on-screen pop-up still
-works either way.
-
-**Confirmed working, but with a real content limitation worth knowing
-up front.** Twilio's WhatsApp Sandbox rejects free-form message text
-entirely (error `21654: ContentSid Required`) - not just outside the
-usual "24 hours since the user last messaged you" WhatsApp rule, it
-rejected it consistently even right after rejoining the sandbox. The
-fix that actually works: send one of Twilio's 3 built-in sandbox
-Content Templates instead of custom text. `alarm.py` uses the
-"Appointment Reminders" template's Content SID
-(`WHATSAPP_TEMPLATE_CONTENT_SID` near the top of the file) -
-**its wording is fixed** ("Reminder: Appt Tue Oct 29..."), not the
-actual alert details, because:
-- Trial accounts can't use Twilio's Content API to inspect or edit
-  templates (`"This feature is not available on a Trial account"`),
-  so there's no way to see or change what variables (if any) it
-  accepts from a Trial account.
-- Passing `ContentVariables` to try to fill in custom text had no
-  effect on this particular template - it appears to be fully static.
-
-**In practice this means WhatsApp becomes a "something happened, go
-check the app" ping, not a message with the actual item/room/customer
-details** - those are already fully visible in the desktop, mobile, and
-web apps the moment you open any of them. The full alert text is still
-printed to the terminal (`[WhatsApp alert - full text below...]`) for
-anyone watching the desktop app directly. If you want the real details
-in the WhatsApp message itself, either check Twilio's other 2 sandbox
-templates ("Order Notifications", "Verification Codes") for one with a
-usable variable, or upgrade past the Trial tier to create a real custom
-template through Content Template Builder.
-
-**Sandbox limits worth knowing:** only reaches numbers that have
-joined via the join code, sessions can expire and need rejoining, and
-this isn't the path to messaging guests/customers directly - that
-would need the full WhatsApp Business Platform (Meta business
-verification + approved message templates + per-message cost),
-deliberately not set up here to keep this simple.
+If `telegram_config.json` is missing or invalid, `alarm.py` just
+prints a warning and skips the Telegram message - the on-screen pop-up
+still works either way.
 
 ## Hardware setup
 
@@ -542,13 +495,15 @@ whenever a tag is scanned in, so each pending item carries the type
 that was selected at the time. Nothing needs to be encoded on the tag
 itself.
 
-**Register vs. Exit Scanner mode:** there's one physical scanner, so
-only one of these is active at a time - press **Register** before
-scanning new stock in, or **Exit Scanner** before watching for tags
-leaving. Switching modes doesn't scan anything by itself; it just
-decides where the *next* tag reads get routed (`main.py`'s
-`_on_set_mode()`/`_poll_readers()`). A tag read while no mode is
-selected yet is dropped with a status message, not silently guessed.
+**Register / Assign to Guest / Exit Scanner mode:** there's one
+physical scanner, so only one of these is active at a time - press
+**Register** before scanning new stock in, **Assign to Guest** before
+scanning tags to attach a guest to, or **Exit Scanner** before
+watching for tags leaving. Switching modes doesn't scan anything by
+itself; it just decides where the *next* tag reads get routed
+(`main.py`'s `_on_set_mode()`/`_poll_readers()`). A tag read while no
+mode is selected yet is dropped with a status message, not silently
+guessed.
 
 ## Current status
 
@@ -570,9 +525,8 @@ Everything described above is implemented and working:
   since this specific unit doesn't accept `serial_reader.py`'s plain
   Inventory command
 - **detector.py** - flags exit scans based on registration + status
-- **alarm.py** - pop-up warning + WhatsApp notification, confirmed
-  delivering via Twilio's WhatsApp Sandbox (a fixed-content template,
-  not the actual alert details - see **WhatsApp alerts setup**)
+- **alarm.py** - pop-up warning + Telegram notification with the full
+  alert details (see **Telegram alerts setup**)
 - **Audit trail** - every registration, edit, status change, deletion,
   and alert trigger writes a row to `linen_item_events`, tagged with
   the typed Operator Name if one was given - see the mobile app's
@@ -591,17 +545,8 @@ Supabase tables for live viewing (Home stats, rooms/categories, and
 theft alerts synced in real time via Supabase Realtime).
 
 Possible next steps:
-- Confirming `hardware/uhfreader18_protocol.py` and
-  `hardware/serial_reader.py` against the physical RD905UW once the
-  RS485-to-USB adapter arrives - everything so far is verified against
-  the documented protocol and a real captured frame (`tests/`), but not
-  yet against the actual reader hardware
-- Deciding how item type is determined from a real tag (dropdown at
-  registration vs. a tag_id → item_type lookup - see **Hardware
-  setup**'s open question)
 - Real push notifications on mobile (needs an EAS development build +
   Apple Developer account - see the mobile app's README)
-- Getting the actual alert details (item/room/customer) into the
-  WhatsApp message itself, instead of a fixed generic template - see
-  the content limitation in **WhatsApp alerts setup**
-- A history/log view of past (not just active) theft alerts
+- A history/log view of past (not just active) theft alerts on
+  desktop itself (the web dashboard and mobile app both already have
+  one)

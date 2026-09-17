@@ -885,8 +885,8 @@ class LinenApp:
         A real reader keeps reading the same tag many times a second
         for as long as it's in range, not just once - without a
         cooldown, one tag walking past the exit would trigger the
-        alarm (pop-up, Telegram, WhatsApp, a theft_alerts row) once per
-        read instead of once per actual event. See
+        alarm (pop-up, Telegram, a theft_alerts row) once per read
+        instead of once per actual event. See
         RESCAN_COOLDOWN_SECONDS above.
 
         Beyond that short cooldown, a tag that already has an
