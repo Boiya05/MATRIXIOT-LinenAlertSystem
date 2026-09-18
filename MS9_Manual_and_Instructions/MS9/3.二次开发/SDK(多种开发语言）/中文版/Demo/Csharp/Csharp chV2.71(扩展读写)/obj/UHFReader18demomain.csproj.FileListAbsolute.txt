@@ -1,0 +1,13 @@
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\bin\x86\Debug\UHFReader18demomain.exe
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\bin\x86\Debug\UHFReader18demomain.pdb
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\ResolveAssemblyReference.cache
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.ChangeIPdlg.resources
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.fNhSetDlg.resources
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.Form1.resources
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.fPhSetDlg.resources
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.fSetdlg.resources
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.locateForm.resources
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.Properties.Resources.resources
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.csproj.GenerateResource.Cache
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.exe
+D:\演示软件\最终版本\UHF资料\演示软件\以UHFReader18命名的中性的中文资料 v2.7\Demo\Csharp chV2.71(扩展读写)\UHFReader18demomain\obj\x86\Debug\UHFReader18demomain.pdb

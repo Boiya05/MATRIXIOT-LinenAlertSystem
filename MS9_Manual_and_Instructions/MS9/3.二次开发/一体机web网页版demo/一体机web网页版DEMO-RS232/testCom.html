@@ -1,0 +1,244 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=7" />
+<META NAME="GENERATOR" Content="Microsoft Developer Studio">
+<META HTTP-EQUIV="Content-Type" content="text/html; charset=gb_2312-80">
+<TITLE>Document Title</TITLE>
+</head>
+<body>
+
+<OBJECT
+          	id=TUHFReader18 
+	  	codebase="UHFReader18Proj.ocx"
+		classid="clsid:1187A369-7CFD-4949-AFFD-3CD615827DBD"
+	  	width=0
+	  	height=0
+	  	align=center
+	  	hspace=0
+	  	vspace=0
+		>
+		</OBJECT>
+
+<script language="javascript"> 
+    var str;
+    function doopen() 
+    { 
+        var Port = document.getElementById("sel").value;
+        var Baud=document.getElementById("sel2").value;
+        var sum = TUHFReader18.Open(Port,Baud);
+        if(sum=="00") 	
+        document.getElementById("Snr").innerText="设备连接成功";
+        else
+        document.getElementById("Snr").innerText="设备连接失败";
+    } 
+    function doclose() 
+    { 
+        var sum = TUHFReader18.Close(); 	
+        if(sum=="00") 	
+        document.getElementById("Snr").innerText="设备关闭成功";
+        else
+        document.getElementById("Snr").innerText="设备关闭失败";
+    } 
+    function doquery() 
+    { 
+        var sum = TUHFReader18.Inventory(); 
+        if(sum=="") 
+        {	
+           document.getElementById("Snr").innerText="未询查到电子标签";
+           document.getElementById("SnEPC").innerText=sum;
+        }
+        else
+        {
+           document.getElementById("Snr").innerText="已询查到电子标签";
+           document.getElementById("SnEPC").innerText=sum;
+        } 
+    } 
+    function doRead() 
+    { 
+        var Temp=document.getElementById("SnEPC").value;
+        if(Temp=="") return;
+
+        var WordPtr=document.getElementById("SnWpt").value;
+        if(WordPtr=="") return;
+
+        var WordNum=document.getElementById("SnNum").value;
+        if(WordNum=="") return;
+
+        var EPC_Len=parseInt(Temp.substr(0,2),16);
+        var EPC=Temp.substr(2,EPC_Len*2);
+        var Mem;
+        var t=document.getElementsByName("radiobutton");
+        for(var i=0;i<t.length;i++)
+        {
+            if(t[i].checked)
+            {
+		Mem=t[i].value;
+            }
+        }
+
+        var sum = TUHFReader18.Read(EPC,WordPtr,WordNum,Mem); 	
+        if(sum=="") 
+        {	
+           document.getElementById("Snr").innerText="读数据失败";
+           document.getElementById("SnData").innerText=sum;
+        }
+        else
+        {
+           document.getElementById("Snr").innerText="读数据成功";
+           document.getElementById("SnData").innerText=sum;
+        } 
+    }
+    function doWrite() 
+    { 
+        var Temp=document.getElementById("SnEPC").value;
+        if(Temp=="") return;
+
+        var WordPtr=document.getElementById("SnWpt").value;
+        if(WordPtr=="") return;
+
+        var WData=document.getElementById("SnData").value;
+        if(WData=="") return;
+
+        var EPC_Len=parseInt(Temp.substr(0,2),16);
+        var EPC=Temp.substr(2,EPC_Len*2);
+        var Mem;
+        var t=document.getElementsByName("radiobutton");
+        for(var i=0;i<t.length;i++)
+        {
+            if(t[i].checked)
+            {
+		Mem=t[i].value;
+            }
+        }
+        var sum = TUHFReader18.Write(EPC,WordPtr,Mem,WData); 	
+        if(sum!="00") 
+        {	
+           document.getElementById("Snr").innerText="写数据失败";
+        }
+        else
+        {
+           document.getElementById("Snr").innerText="写数据成功";
+        } 
+    }
+    
+    function doOffRelay() 
+    { 
+	var relaystatus = 0;
+        var sum = TUHFReader18.SetRelays(relaystatus); 
+        if(sum!="00") 
+        {	
+           document.getElementById("Snr").innerText="继电器吸合失败";
+        }
+        else
+        {
+           document.getElementById("Snr").innerText="继电器吸合成功";
+        } 
+    } 
+    
+    function doOnRelay() 
+    { 
+	var relaystatus = 1;
+        var sum = TUHFReader18.SetRelays(relaystatus); 
+        if(sum!="00") 
+        {	
+           document.getElementById("Snr").innerText="继电器吸合失败";
+        }
+        else
+        {
+           document.getElementById("Snr").innerText="继电器吸合成功";
+        } 
+    } 
+</script> 
+
+<table border="1" width= "400 "> 
+<tr>
+<td colspan="4" style="text-align:center" >超高频设备网页通讯测试程序
+</td>
+</tr>
+
+<tr>
+<td>串口：</td>
+<td> 
+<select name="Combo1" id="sel">    
+ <option id="sel"value="1">COM1</option>      
+ <option id="sel"value="2">COM2</option>
+ <option id="sel"value="3">COM3</option>
+ <option id="sel"value="4">COM4</option>
+ <option id="sel"value="5">COM5</option>
+ <option id="sel"value="6">COM6</option>
+ <option id="sel"value="7">COM7</option>
+ <option id="sel"value="8">COM8</option>
+ <option id="sel"value="9">COM9</option>
+ <option id="sel"value="10">COM10</option>
+ <option id="sel"value="11">COM11</option>
+ <option id="sel"value="12">COM12</option>
+ <option id="sel"value="13">COM13</option>
+ <option id="sel"value="14">COM14</option>
+ <option id="sel"value="15">COM15</option>
+ <option id="sel"value="16">COM16</option>
+ <option id="sel"value="17">COM17</option>
+ <option id="sel"value="18">COM18</option>
+ <option id="sel"value="19">COM19</option>
+ <option id="sel"value="20">COM20</option>
+</select>
+</td>
+<td colspan="2">   </td>
+</tr> 
+
+<tr>
+<td>波特率：</td>
+<td><select name="Combo2" id="sel2">    
+ <option id="sel2"value="0">9600bps</option>      
+ <option id="sel2"value="1">19200bps</option>
+ <option id="sel2"value="2">38400bps</option>
+ <option id="sel2"value="5" selected = "selected">57600bps</option>
+ <option id="sel2"value="6">115200bps</option>
+</select> <td>
+<td colspan="2">   </td>
+</tr> 
+
+<tr>
+<td>通讯：</td>
+<td><input type="button" value="连接" id="button1" onclick="doopen();"></input> </td>
+<td><input type="button" value="关闭" id="button2" onclick="doclose();"></input></td>
+</tr>
+
+<tr>
+<td>继电器：</td>
+<td><input type="button" value=" 释放 " id="btOffRelay" onclick="doOffRelay();"></input></td>
+<td><input type="button" value=" 吸合 " id="btOnRelay" onclick="doOnRelay();"></input></td>
+</tr>
+
+<tr>
+<td>标签操作：</td>
+<td><input type="button" value="询查" id="button3" onclick="doquery();"></input></td>
+<td><input type="button" value=" 读 " id="button4" onclick="doRead();"></input></td>
+<td><input type="button" value=" 写 " id="button5" onclick="doWrite();"></input></td>
+</tr>
+
+<td colspan="4"><input name="radiobutton" type="radio" value="0">保留区
+<input name="radiobutton" type="radio" value="1"> EPC区
+<input name="radiobutton" type="radio" value="2">TID区
+<input name="radiobutton" type="radio" value="3" checked> 用户区</td>
+
+<tr>
+  <td>标签ID:</td>
+  <td colspan="3"><input type="text"  style="width:280px;"  name="SnEPC"></td>
+</tr> 
+<tr>
+  <td>起始地址:</td>
+  <td><input type="text" style="width:80px;" name="SnWpt" value="2"></td>
+  <td>字数:</td>
+  <td><input type="text" style="width:80px;" name="SnNum" value="6"></td>
+</tr> 
+<tr>
+  <td>读写数据:</td>
+  <td colspan="3"><input type="text"  style="width:280px;"  name="SnData"></td>
+</tr> 
+<tr>
+  <td>信息:</td>
+  <td colspan="3"><input type="text"  style="width:280px;"  name="Snr"></td>
+</tr> 
+
+</body>
