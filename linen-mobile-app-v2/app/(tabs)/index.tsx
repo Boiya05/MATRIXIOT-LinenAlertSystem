@@ -16,10 +16,11 @@ import { StatCard } from '@/components/stat-card';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import { getStats } from '@/data/linen-data';
+import { getStats, type ScannerMode } from '@/data/linen-data';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHasLoadedOnce } from '@/hooks/use-has-loaded-once';
 import { useLinenItems } from '@/hooks/use-linen-items';
+import { useScannerStatus } from '@/hooks/use-scanner-status';
 import { useTheftAlerts } from '@/hooks/use-theft-alerts';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
@@ -53,6 +54,7 @@ export default function HomeScreen() {
           <ThemedText style={{ color: colors.textSecondary }}>
             Live status of every tracked item
           </ThemedText>
+          <ScannerStatusBadge />
         </View>
 
         {error && (
@@ -193,6 +195,51 @@ export default function HomeScreen() {
   );
 }
 
+const SCANNER_MODE_LABEL: Record<NonNullable<ScannerMode>, string> = {
+  register: 'REGISTER',
+  assign: 'ASSIGN TO GUEST',
+  exit: 'EXIT SCANNER',
+};
+
+/**
+ * Live, read-only view of what the desktop app's one physical scanner
+ * is currently doing - there's no way to scan from this app anymore
+ * (the Scan tab was removed; only the desktop app has real hardware
+ * wired in), so this is the only visibility this app has into it.
+ * Ported from the web dashboard's identical badge - see
+ * hooks/use-scanner-status.ts and data/linen-data.ts's
+ * getScannerStatus().
+ */
+function ScannerStatusBadge() {
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
+  const { status, loading } = useScannerStatus();
+
+  if (loading) return null;
+
+  if (!status.mode) {
+    return (
+      <View style={[styles.modeBadge, { backgroundColor: `${colors.textSecondary}1a` }]}>
+        <View style={[styles.modeDot, { backgroundColor: colors.textSecondary }]} />
+        <ThemedText style={[styles.modeText, { color: colors.textSecondary }]}>
+          Desktop scanner: idle
+        </ThemedText>
+      </View>
+    );
+  }
+
+  const modeColor = status.mode === 'register' ? colors.modeRegister : status.mode === 'assign' ? colors.modeAssign : colors.danger;
+
+  return (
+    <View style={[styles.modeBadge, { backgroundColor: `${modeColor}1a` }]}>
+      <View style={[styles.modeDot, { backgroundColor: modeColor }]} />
+      <ThemedText style={[styles.modeText, { color: modeColor }]}>
+        Desktop scanner: {SCANNER_MODE_LABEL[status.mode]}
+      </ThemedText>
+    </View>
+  );
+}
+
 /** The green "Dismiss" panel revealed by swiping a theft alert card left. */
 function DismissSwipeAction({
   progress,
@@ -229,6 +276,25 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 4,
   },
+  modeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 4,
+  },
+  modeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  modeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -242,7 +308,7 @@ const styles = StyleSheet.create({
   },
   alertsScroll: {
     maxHeight: 260,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
   alertsScrollContent: {
@@ -254,8 +320,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   alertTextWrap: {
     flex: 1,

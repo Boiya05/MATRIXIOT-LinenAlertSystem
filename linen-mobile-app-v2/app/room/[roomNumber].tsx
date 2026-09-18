@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EditItemModal } from '@/components/edit-item-modal';
 import { PressableScale } from '@/components/pressable-scale';
 import { SkeletonRowList } from '@/components/skeleton';
+import { StatusBadge } from '@/components/status-badge';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
@@ -71,11 +72,7 @@ export default function RoomDetailScreen() {
                     Tag {item.tagId}
                   </ThemedText>
                 </View>
-                <View style={[styles.statusPill, { backgroundColor: `${colors.statusInUse}22` }]}>
-                  <ThemedText style={[styles.statusPillText, { color: colors.statusInUse }]}>
-                    {item.status}
-                  </ThemedText>
-                </View>
+                <StatusBadge status={item.status} />
                 {isAdmin && <IconSymbol name="pencil" size={15} color={colors.textSecondary} />}
               </View>
             );
@@ -140,20 +137,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   itemTextWrap: {
     gap: 2,
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusPillText: {
-    fontSize: 12,
-    fontWeight: '600',
   },
 });

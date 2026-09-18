@@ -1,9 +1,9 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PressableScale } from '@/components/pressable-scale';
+import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
@@ -75,16 +75,7 @@ export default function LoginScreen() {
 
             {error && <ThemedText style={{ color: colors.danger, fontSize: 13 }}>{error}</ThemedText>}
 
-            <PressableScale
-              onPress={handleLogIn}
-              disabled={submitting}
-              style={[styles.button, { backgroundColor: colors.tint, opacity: submitting ? 0.6 : 1 }]}>
-              {submitting ? (
-                <ActivityIndicator color={colors.background} />
-              ) : (
-                <ThemedText style={[styles.buttonText, { color: colors.background }]}>Log In</ThemedText>
-              )}
-            </PressableScale>
+            <PrimaryButton title="Log In" onPress={handleLogIn} loading={submitting} style={styles.button} />
 
             <Link href="/forgot-password" style={styles.link}>
               <ThemedText style={{ color: colors.tint, fontSize: 13 }}>Forgot password?</ThemedText>
@@ -129,14 +120,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   button: {
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
     marginTop: 6,
-  },
-  buttonText: {
-    fontSize: 15,
-    fontWeight: '700',
   },
   link: {
     alignSelf: 'center',

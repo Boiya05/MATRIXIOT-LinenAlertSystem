@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PressableScale } from '@/components/pressable-scale';
+import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
@@ -106,16 +107,7 @@ export default function SignUpScreen() {
               </ThemedText>
             )}
 
-            <PressableScale
-              onPress={handleSignUp}
-              disabled={submitting}
-              style={[styles.button, { backgroundColor: colors.tint, opacity: submitting ? 0.6 : 1 }]}>
-              {submitting ? (
-                <ActivityIndicator color={colors.background} />
-              ) : (
-                <ThemedText style={[styles.buttonText, { color: colors.background }]}>Sign Up</ThemedText>
-              )}
-            </PressableScale>
+            <PrimaryButton title="Sign Up" onPress={handleSignUp} loading={submitting} style={styles.button} />
 
             <PressableScale onPress={() => router.replace('/login')} style={styles.link}>
               <ThemedText style={{ color: colors.tint, fontSize: 13 }}>
@@ -156,14 +148,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   button: {
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
     marginTop: 6,
-  },
-  buttonText: {
-    fontSize: 15,
-    fontWeight: '700',
   },
   link: {
     alignSelf: 'center',

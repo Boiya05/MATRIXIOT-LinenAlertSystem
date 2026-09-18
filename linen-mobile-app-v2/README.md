@@ -1,23 +1,35 @@
 # Linen RFID Detection System - Mobile
 
-Built with Expo (React Native). Per the supervisor-reviewed
-architecture ("Proposed System Architecture & Scope - Mobile
-Long-Range UHF RFID Hotel Property / Linen System"), **this is now the
-primary operational app in the system** - it's meant to connect
-directly to the physical UHF RFID reader, not just view data collected
-elsewhere. The [desktop app](../linen_detection_system/) remains a
-secondary/legacy scanning terminal, and the
-[web dashboard](../linen-web-dashboard/) is the management view - all
-three read and write the exact same Supabase project, so a scan made
-on any of them shows up on the others within seconds.
+Built with Expo (React Native). A live-viewing/management companion to
+the [desktop app](../linen_detection_system/) - the desktop app is the
+only place scanning actually happens (it's the one wired up to a real
+physical UHF RFID reader; see its README, "Hardware setup"). This app,
+like the [web dashboard](../linen-web-dashboard/), watches what the
+desktop app is doing instead: stats, what's in which room, live theft
+alerts, alert history, the audit trail, and (for admins) role
+management - all behind a login. All three apps read and write the
+exact same Supabase project, so a scan made on the desktop app shows
+up here within seconds - including a live badge on Home showing which
+Scanner Mode the desktop app is currently in.
 
-The **Scan** tab (see below) registers items and runs the exit-scan
-theft check. **Simulated** mode works today, everywhere, no hardware
-needed. **USB reader mode** talks to a real UHF reader directly over
-USB (Android + an OTG cable) - see `hardware/README.md` for exactly
-what that requires and what's still unverified. The rest of the app is
-for checking on things from your phone - stats, what's in which room,
-live theft alerts, and alert history - behind a login.
+This app used to also have its own **Scan** tab (registration +
+exit-scan, in Simulated mode or, per an earlier architecture doc, a
+real USB reader mode via Android's USB Host API) - it was removed for
+the same reason the web dashboard's Scan page was: the real reader
+unit this project actually uses rejects the plain UHF protocol outright
+(see the desktop app's README, "If `serial` doesn't work"), and the
+USB Host reader mode here was never verified against real hardware
+either. Rather than keep two more unverified "maybe this works"
+scanning paths around, the desktop app is now the only one, and this
+app (and the web dashboard) went from "an app you can also scan from"
+to "a live window into what the desktop app is doing."
+
+This app's screens were also redesigned this pass to match the web
+dashboard's look (teal/slate palette, rounded cards) as closely as a
+native tab-based app reasonably can - see `constants/theme.ts` for the
+color tokens and `components/card.tsx`, `status-badge.tsx`,
+`primary-button.tsx`, `search-input.tsx`, and `section-header.tsx` for
+the shared pieces every screen below is now built from.
 
 ## Requirements
 
@@ -77,92 +89,22 @@ reset link by email - tapping it opens the app directly to a "set a
 new password" screen. See **Password reset setup** below for one
 required Supabase dashboard step before this works.
 
-**Home** - live stats (Total / In Use / Laundry / Storage) and a
-scrollable theft-alerts section. New alerts appear automatically while
+**Home** - live stats (Total / In Use / Laundry / Storage), a
+scrollable theft-alerts section, and a **Desktop scanner** badge
+showing which Scanner Mode the desktop app's physical reader is
+currently in (Register / Assign to Guest / Exit Scanner, or idle) -
+ported from the web dashboard's identical badge, see
+`hooks/use-scanner-status.ts`. New alerts appear automatically while
 the app is open (Supabase Realtime); press **OK** on an alert to
 dismiss it.
 
-**Scan** - three independent sections, each independently switchable
-between **Simulated** and **USB reader** mode where relevant:
-- **Register items** - scan a tag (a Tag ID field, typed by hand or
-  from a real USB "keyboard wedge" scanner - see below) into a
-  category (Item Type). Customer Name + Room Number are optional -
-  leave them blank to save the tags as unassigned stock (status
-  Storage), or fill them in to also assign a guest in this same step.
-  A tag that's already registered can't be scanned into a new
-  registration - it would silently overwrite its existing data - so
-  scanning one just shows its current status instead; use **Assign to
-  guest** for it instead. A live "N scanned" badge tracks the pending
-  batch, and that duplicate check runs against a local cache instead of
-  a network call per scan - see **Reader speed & batch scanning**
-  below for why.
-- **Assign to guest** - the other half of that: scan any number of
-  already-registered tags, then attach (or change) one Customer Name +
-  Room Number for all of them at once, flipping each one's status to
-  In Use.
-- **Exit scanner** - a Tag ID (typed, or from a real reader) runs
-  through the same theft rule as `detector.py` (`lib/detector.ts`
-  here); a flagged scan writes a `theft_alerts` row the same way the
-  desktop app's `alarm.py` does. A 5-second cooldown per tag
-  (`RESCAN_COOLDOWN_MS`) covers a real reader re-reading the same tag
-  many times a second; beyond that, a tag with an alert already active
-  doesn't raise a second one at all (`hasActiveAlert()`) - dismissing
-  the existing one (from any of the three apps) is what lets the next
-  flagged scan raise a new one. A new alert also sends a Telegram
-  message, same as the desktop app - see **Telegram alerts** below for
-  how, since this app can't hold the bot token itself.
-
-All three sections are gated to `staff` accounts - a signed-in
-`viewer` sees a notice and every control disabled up front, rather
-than only finding out via a rejected write. See **Role-based
-permissions** below.
-
-A USB "keyboard wedge" reader (types the tag ID and presses Enter, no
-special driver needed) already works today through Simulated mode's
-Tag ID fields, plugged in via a USB OTG cable - Android treats it as a
-plain keyboard, same as the desktop app and web dashboard's equivalent
-fields. **USB reader mode** (the mode-switch button) is a different,
-more involved integration - direct USB Host API access for a reader
-that talks a real serial protocol instead - and needs Android + a USB
-OTG cable plus a dev-client build instead of Expo Go; see
-`hardware/README.md` for the full constraints and what's still
-unverified (the actual reader protocol is a placeholder until a model
-is chosen, and on-device behavior hasn't been tested against real
-hardware).
-
-## Reader speed & batch scanning
-
-Two things specific to running a real UHF reader in keyboard-wedge
-mode, not something a typed-by-hand Tag ID field would ever hit:
-
-- **Merged reads.** A reader in continuous-inventory mode can
-  occasionally drop the Enter keystroke between two very fast
-  back-to-back reads - confirmed happening in practice, not just a
-  theoretical risk - landing as one long string that's actually two
-  (or more) tag IDs glued together with no separator.
-  `hardware/base.ts`'s `push()` recovers from this: a read that's all
-  hex characters and an exact multiple of 24 (the fixed length of this
-  hardware's tag IDs) gets split back into individual tag IDs before
-  anything downstream sees it, since every reader implementation
-  funnels through `push()` rather than touching the queue directly. A
-  read that doesn't match that exact pattern passes through unchanged.
-- **Per-scan network latency.** Register items' "already registered?"
-  check used to call `getItemByTag()` on every single scan - with a
-  real reader flooding reads during a batch registration, that
-  round-trip was the actual limit on how fast you could move through a
-  stack of items. It now checks a local cache (loaded once, kept
-  current as items are saved) instead, so scanning itself never waits
-  on the network. Since that cache can still go a few seconds stale (a
-  different device registering the same tag in the meantime), tapping
-  **Save** does one batched re-check of the whole pending list against
-  the database first (`getItemsByTagIds()`) and quietly skips anything
-  that turns out to already be registered, rather than overwriting it.
-
-**List View** - a segmented view of all linen:
+**Inventory** - a segmented view of all linen, with a search box
+(room, guest, or item type) filtering whichever list is currently
+showing:
 - **In Use** - grouped by room, showing the customer and item count; tap a room to see who's in it and exactly which items
 - **Laundry** / **Storage** - grouped by item type instead (customer/room aren't meaningful once an item isn't with a guest), with a count per type; tap a category to see its list of Tag IDs, where a `staff` account also gets a **Select** button to multi-select and bulk-delete records (mirrors the web dashboard's Inventory page, scoped to whichever status + type you're already looking at instead of one flat searchable table)
 
-**History** - every alert you've already dismissed, newest first, with its original timestamp - kept separate from Home's active-alerts banner.
+**Alert History** - every alert you've already dismissed, newest first, with its original timestamp - kept separate from Home's active-alerts banner.
 
 **Settings** - notification/sound toggles, saved to your account (so
 they follow you across devices/reinstalls); an **Account** row showing
@@ -706,39 +648,18 @@ tag/guest/room/actor, live via Realtime. Desktop doesn't have its own
 viewer for it - it has no equivalent "browse and search records" part
 of the UI to begin with, so there was nowhere natural to add one.
 
-## Telegram alerts
-
-The desktop app sends a Telegram message straight from Python, using
-credentials in its own local `telegram_config.json`. This app can't do
-that safely - anything bundled into the APK/IPA is extractable, so
-there's nowhere on-device to keep a bot token that a browser tab or
-app bundle inspection couldn't pull out. Instead, `lib/telegram-alert.ts`
-calls a small server-side route on the **web dashboard**
-(`app/api/telegram-alert`), which holds the real credentials and sends
-the message on this app's behalf - see the web dashboard's README
-("Telegram alerts") for exactly how that route works and how it's
-secured.
-
-`EXPO_PUBLIC_NOTIFY_API_URL` in `.env` is the dashboard's base URL -
-defaults to its production deployment if left unset, so most setups
-need nothing added here at all; override it only if you're pointing at
-a different deployment (a preview URL, or `localhost` during
-dashboard development). This call is best-effort like everything else
-in the alert flow: if it fails (dashboard down, no signed-in session,
-Telegram not configured on that deployment), the on-screen result,
-the `theft_alerts` row, and the audit log entry all already happened
-regardless - only the Telegram message itself is skipped.
-
 ## Status constraint
 
 `linen_items.status` was free text with nothing stopping a typo, a
 bug, or a direct write from putting something other than `In Use`,
-`Laundry`, or `Storage` in it - and the exit-scanner rule
-(`detector.py`/`lib/detector.ts`) now alarms on anything that *isn't*
-one of those three (see their own comments for why that's the safer
-direction to fail), so a bad value there would trip the theft alert on
-every scan, not silently disable it. Either way, bad data shouldn't be
-possible to write in the first place. Run this once in the Supabase
+`Laundry`, or `Storage` in it - and the desktop app's exit-scanner rule
+(`detector.py`, the only implementation left now that both this app's
+and the web dashboard's own Scan/exit-scan code has been removed) now
+alarms on anything that *isn't* one of those three (see its own
+comments for why that's the safer direction to fail), so a bad value
+there would trip the theft alert on every scan, not silently disable
+it. Either way, bad data shouldn't be possible to write in the first
+place. Run this once in the Supabase
 SQL Editor:
 
 ```sql
@@ -805,41 +726,25 @@ confirmed working; the receiving half needs testing on your phone.
 
 ## Current status
 
-Working: login/signup with persistent sessions, live item stats,
-room/category browsing with drill-down (plus staff-only bulk delete),
-real-time theft alerts with dismiss, alert history, a searchable
-Activity screen (the audit trail), per-account settings, and item
-registration + exit-scan theft detection from the Scan tab, in both
-Simulated mode and (per the supervisor-reviewed architecture doc) a
-real USB reader mode via Android's USB Host API - all protected by
-Supabase Row Level Security now that real accounts exist, and
-role-gated so only `staff` accounts can write, both at the RLS layer
-and proactively in the UI (disabled controls + a notice for `viewer`
-accounts, matching the web dashboard). An Admin screen lets `admin`
-accounts assign roles by email, and admin accounts can also fix a
-mistake on an already-registered item (guest, room, item type) by
-tapping it on the Room/Category screens - see **Admin role** and
-**Editing a registered item (admin only)** above. A flagged exit-scan also
-relays a Telegram alert through the web dashboard - see **Telegram
-alerts** above. Every registration, edit, status change, deletion,
-and alert trigger/dismissal across all three apps also writes to an
-append-only audit trail - see **Audit trail** above. Simulated mode
-was verified against live data before being committed: a full
-register → assign → exit-scan → theft-alert-logged pass through the
-real UI, using a throwaway test account and test rows that were
-deleted afterward. USB reader mode was verified to compile and link
-correctly via a real development-client build, but not yet tested
-against physical hardware - see `hardware/README.md`.
+Working: login/signup with persistent sessions, live item stats, a
+live "Desktop scanner" status badge, room/category browsing with
+drill-down and a search box (plus staff-only bulk delete), real-time
+theft alerts with dismiss, alert history, a searchable Activity screen
+(the audit trail), per-account settings - all protected by Supabase
+Row Level Security, and role-gated so only `staff` accounts can write,
+both at the RLS layer and proactively in the UI (disabled controls and
+a notice for `viewer` accounts, matching the web dashboard). An Admin
+screen lets `admin` accounts assign roles by email, and admin accounts
+can also fix a mistake on an already-registered item (guest, room,
+item type) by tapping it on the Room/Category screens - see **Admin
+role** and **Editing a registered item (admin only)** above. Every
+registration, edit, status change, deletion, and alert
+trigger/dismissal across all three apps also writes to an append-only
+audit trail - see **Audit trail** above. This screen set (and its
+visual redesign to match the web dashboard) was verified against live
+data before being committed.
 
 Not yet built / not yet confirmed:
-- **The real reader's protocol.** `hardware/usb-serial-reader.ts`'s
-  two placeholder methods (`sendStartupCommands`,
-  `parseTagFromFrame`) can't be finished until a specific reader model
-  is chosen and its datasheet is in hand - see the architecture doc's
-  own "Items to Confirm" section.
-- **On-device verification of USB reader mode.** No physical Android
-  device + OTG cable + reader has been available to test the actual
-  permission flow and data path yet.
 - **The API/integration layer** for external hotel or hospital
   management software to read selected data - the doc calls for this,
   Supabase is structured to support it, but the layer itself (what

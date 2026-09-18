@@ -15,6 +15,7 @@ import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, TextInp
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PressableScale } from '@/components/pressable-scale';
+import { PrimaryButton } from '@/components/primary-button';
 import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
@@ -189,16 +190,7 @@ export default function AdminScreen() {
                 );
               })}
             </View>
-            <PressableScale
-              onPress={handleAssign}
-              disabled={assigning || !email.trim()}
-              style={[styles.assignButton, { backgroundColor: colors.tint, opacity: assigning || !email.trim() ? 0.6 : 1 }]}>
-              {assigning ? (
-                <ActivityIndicator color={colors.background} />
-              ) : (
-                <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Assign</ThemedText>
-              )}
-            </PressableScale>
+            <PrimaryButton title="Assign" onPress={handleAssign} disabled={!email.trim()} loading={assigning} />
             {status && <ThemedText style={{ color: colors.textSecondary, fontSize: 13 }}>{status}</ThemedText>}
           </View>
 
@@ -269,7 +261,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 9,
     fontSize: 14,
@@ -282,11 +274,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: 8,
-  },
-  assignButton: {
-    borderRadius: 10,
-    paddingVertical: 11,
-    alignItems: 'center',
   },
   errorText: {
     paddingHorizontal: 20,
@@ -302,9 +289,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   roleBadge: {
     borderRadius: 999,

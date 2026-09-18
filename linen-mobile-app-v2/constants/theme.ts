@@ -5,49 +5,62 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// Ported from the web dashboard's actual Tailwind palette
+// (linen-web-dashboard/app/globals.css + its component classes), so
+// both apps read as the same product - teal accent, slate neutrals,
+// amber/red for warning/danger. Replaces the original Expo template's
+// blue/violet defaults.
+const tintColorLight = '#0d9488'; // teal-600
+const tintColorDark = '#2dd4bf'; // teal-400
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
+    text: '#0f172a', // slate-900
+    background: '#f8fafc', // slate-50
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: '#64748b', // slate-500
+    tabIconDefault: '#64748b',
     tabIconSelected: tintColorLight,
-    cardBackground: '#F5F7FA',
-    border: '#E1E5EA',
-    textSecondary: '#5B6470',
+    cardBackground: '#ffffff',
+    border: '#e2e8f0', // slate-200
+    textSecondary: '#94a3b8', // slate-400
     // Status semantics used across the app - keep separate from `tint`,
-    // which is just the brand accent color. Each status gets its own hue
-    // (green/amber/violet) so the stat grid, room icons, and category
-    // rows are easy to tell apart at a glance.
-    statusInUse: '#16A34A',
-    statusLaundry: '#D97706',
-    statusStorage: '#7C3AED',
-    danger: '#DC2626',
-    dangerBackground: '#FEE2E2',
-    warningText: '#92400E',
-    warningBackground: '#FFFBEB',
+    // which is just the brand accent color. Matches the web dashboard's
+    // stat chips exactly: teal for In Use, amber for Laundry, slate for
+    // Storage/Total (not its own hue - "not currently with a guest"
+    // isn't a warning state).
+    statusInUse: '#0d9488', // teal-600
+    statusLaundry: '#d97706', // amber-600
+    statusStorage: '#94a3b8', // slate-400
+    danger: '#dc2626', // red-600
+    dangerBackground: '#fef2f2', // red-50
+    warningText: '#b45309', // amber-700
+    warningBackground: '#fffbeb', // amber-50
+    // Scanner Mode colors, matching the desktop app's mode buttons /
+    // the web dashboard's "Desktop scanner" status badge - Exit
+    // Scanner mode reuses `danger` (red), so only these two are new.
+    modeRegister: '#3b82f6', // blue-500
+    modeAssign: '#a855f7', // purple-500
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
+    text: '#e2e8f0', // slate-200, matches web's dark --foreground
+    background: '#0a0f1a', // matches web's dark --background
     tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
+    icon: '#94a3b8', // slate-400
+    tabIconDefault: '#94a3b8',
     tabIconSelected: tintColorDark,
-    cardBackground: '#1E2124',
-    border: '#2A2D30',
-    textSecondary: '#9BA1A6',
-    statusInUse: '#4ADE80',
-    statusLaundry: '#F0A93E',
-    statusStorage: '#A78BFA',
-    danger: '#F87171',
-    dangerBackground: '#3B1D1D',
-    warningText: '#FBBF24',
-    warningBackground: '#3D2E0F',
+    cardBackground: '#0f172a', // slate-900
+    border: '#1e293b', // slate-800
+    textSecondary: '#64748b', // slate-500
+    statusInUse: '#2dd4bf', // teal-400
+    statusLaundry: '#fbbf24', // amber-400
+    statusStorage: '#64748b', // slate-500
+    danger: '#f87171', // red-400
+    dangerBackground: '#3b1416',
+    warningText: '#fbbf24', // amber-400
+    warningBackground: '#3d2e0f',
+    modeRegister: '#60a5fa', // blue-400
+    modeAssign: '#c084fc', // purple-400
   },
 };
 

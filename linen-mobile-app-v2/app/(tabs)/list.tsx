@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { PressableScale } from '@/components/pressable-scale';
+import { SearchInput } from '@/components/search-input';
 import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
@@ -36,11 +37,32 @@ export default function ListViewScreen() {
   const { items, loading, error, refresh } = useLinenItems();
   const hasLoadedOnce = useHasLoadedOnce(loading);
   const [selectedStatus, setSelectedStatus] = useState<LinenStatus>('In Use');
+  const [search, setSearch] = useState('');
 
-  const rooms = useMemo(() => getActiveRooms(items), [items]);
-  const categories = useMemo(
+  const allRooms = useMemo(() => getActiveRooms(items), [items]);
+  const allCategories = useMemo(
     () => getGroupedByType(items, selectedStatus),
     [items, selectedStatus]
+  );
+
+  // Client-side text filter, same pattern as app/activity.tsx's search -
+  // matches the web dashboard's Inventory page having a search box,
+  // without adding a network round-trip per keystroke.
+  const query = search.trim().toLowerCase();
+  const rooms = useMemo(
+    () =>
+      query
+        ? allRooms.filter(
+            (room) =>
+              room.roomNumber.toLowerCase().includes(query) ||
+              room.customerName.toLowerCase().includes(query)
+          )
+        : allRooms,
+    [allRooms, query]
+  );
+  const categories = useMemo(
+    () => (query ? allCategories.filter((category) => category.itemType.toLowerCase().includes(query)) : allCategories),
+    [allCategories, query]
   );
 
   const isInUse = selectedStatus === 'In Use';
@@ -59,12 +81,16 @@ export default function ListViewScreen() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
       <View style={styles.header}>
-        <ThemedText type="title">📋 Linen</ThemedText>
+        <ThemedText type="title">📋 Inventory</ThemedText>
         <ThemedText style={{ color: colors.textSecondary }}>
           {isInUse
             ? `${rooms.length} room${rooms.length === 1 ? '' : 's'} currently holding linen`
             : `${categories.length} item type${categories.length === 1 ? '' : 's'} in ${selectedStatus}`}
         </ThemedText>
+      </View>
+
+      <View style={styles.searchWrap}>
+        <SearchInput value={search} onChangeText={setSearch} placeholder="Search room, guest, or item type…" />
       </View>
 
       <View style={[styles.segmented, { backgroundColor: colors.cardBackground, borderColor: border }]}>
@@ -216,6 +242,10 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 4,
   },
+  searchWrap: {
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
   segmented: {
     flexDirection: 'row',
     marginHorizontal: 20,
@@ -249,9 +279,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   rowIconWrap: {
     width: 38,

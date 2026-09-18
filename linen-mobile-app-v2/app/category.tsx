@@ -256,9 +256,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   tagCard: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   selectToggle: {
     borderRadius: 8,

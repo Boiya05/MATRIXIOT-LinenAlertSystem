@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PressableScale } from '@/components/pressable-scale';
+import { SectionHeader } from '@/components/section-header';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
@@ -252,12 +253,9 @@ export default function SettingsScreen() {
 }
 
 function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const textSecondary = useThemeColor({}, 'textSecondary');
   return (
     <View style={styles.section}>
-      <ThemedText style={[styles.sectionTitle, { color: textSecondary }]}>
-        {title.toUpperCase()}
-      </ThemedText>
+      <SectionHeader title={title} />
       <View style={styles.sectionBody}>{children}</View>
     </View>
   );
@@ -306,11 +304,6 @@ const styles = StyleSheet.create({
   section: {
     gap: 8,
   },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-  },
   sectionBody: {
     gap: 8,
   },
@@ -318,9 +311,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   signOutRow: {
     justifyContent: 'center',

@@ -12,9 +12,10 @@
 
 import { Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SearchInput } from '@/components/search-input';
 import { SkeletonRowList } from '@/components/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
@@ -96,13 +97,7 @@ export default function ActivityScreen() {
           Who registered, edited, moved, or deleted an item, and who triggered or cleared an
           alert. Most recent 200 events.
         </ThemedText>
-        <TextInput
-          style={[styles.search, { backgroundColor: colors.cardBackground, borderColor: border, color: colors.text }]}
-          placeholder="Search tag, guest, room, or who did it"
-          placeholderTextColor={colors.textSecondary}
-          value={query}
-          onChangeText={setQuery}
-        />
+        <SearchInput value={query} onChangeText={setQuery} placeholder="Search tag, guest, room, or who did it" />
       </View>
 
       {error && (
@@ -162,13 +157,6 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 10,
   },
-  search: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
-  },
   errorText: {
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -180,9 +168,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   eventCard: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   eventTopRow: {
     flexDirection: 'row',

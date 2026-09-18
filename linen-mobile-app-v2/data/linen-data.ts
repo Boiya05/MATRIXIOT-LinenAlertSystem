@@ -134,66 +134,6 @@ export async function getAllItems(): Promise<LinenItem[]> {
   return (data ?? []).map(mapRowToLinenItem);
 }
 
-/**
- * Look up a single linen item by its tag ID - used by the Scan tab's
- * exit scanner to check whether a scanned tag is registered, and what
- * status it's in, before deciding whether to flag it. Mirrors the
- * desktop app's database.get_item_by_tag() and the web dashboard's
- * function of the same name.
- */
-export async function getItemByTag(tagId: string): Promise<LinenItem | null> {
-  const { data, error } = await supabase.from('linen_items').select('*').eq('tag_id', tagId).maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to look up tag: ${error.message}`);
-  }
-
-  return data ? mapRowToLinenItem(data) : null;
-}
-
-/**
- * Save a linen item - inserts a new row, or updates the existing one
- * if this tag_id is already registered (same upsert-on-tag_id
- * behavior as the desktop app's database.save_linen_item()).
- */
-export async function saveLinenItem(item: LinenItem): Promise<void> {
-  const { error } = await supabase.from('linen_items').upsert(
-    {
-      tag_id: item.tagId,
-      customer_name: item.customerName,
-      room_number: item.roomNumber,
-      item_type: item.itemType,
-      status: item.status,
-    },
-    { onConflict: 'tag_id' }
-  );
-
-  if (error) {
-    throw friendlyWriteError('save item', error);
-  }
-}
-
-/**
- * Look up every already-registered tag among a given set of tag IDs,
- * in one call - used by the Register items batch save to catch a race
- * (another device registered one of these tags after this session's
- * local "already registered?" cache was built, but before Save was
- * tapped) without paying a network round-trip per scan. See
- * app/(tabs)/scan.tsx's RegisterSection for how the local cache and
- * this function work together. Mirrors the web dashboard's copy.
- */
-export async function getItemsByTagIds(tagIds: string[]): Promise<LinenItem[]> {
-  if (tagIds.length === 0) return [];
-
-  const { data, error } = await supabase.from('linen_items').select('*').in('tag_id', tagIds);
-
-  if (error) {
-    throw new Error(`Failed to check tags: ${error.message}`);
-  }
-
-  return (data ?? []).map(mapRowToLinenItem);
-}
-
 export interface UpdateItemResult {
   success: boolean;
   message: string;
@@ -201,15 +141,13 @@ export interface UpdateItemResult {
 
 /**
  * Fix a mistake on an already-registered item's details (customer
- * name, room number, item type) - admin only. Unlike saveLinenItem()
- * (a plain upsert any staff/admin account can already do for the
- * ordinary register/status-change flow), this goes through the
+ * name, room number, item type) - admin only. This goes through the
  * admin_update_linen_item() RPC, which checks is_admin() on the server
  * before writing - see "Editing a registered item (admin only)" below
- * for why this can't just be a table-level RLS policy (staff already
- * needs plain UPDATE on linen_items for the scan flow, so restricting
- * the table itself would break that). Mirrors the web dashboard's copy
- * of this same function.
+ * for why this can't just be a table-level RLS policy (staff still
+ * needs plain UPDATE on linen_items for ordinary status changes made
+ * from the desktop app, so restricting the table itself would break
+ * that). Mirrors the web dashboard's copy of this same function.
  */
 export async function updateLinenItemDetails(
   tagId: string,
@@ -242,52 +180,6 @@ export async function deleteLinenItem(tagId: string): Promise<void> {
   if (error) {
     throw friendlyWriteError('delete item', error);
   }
-}
-
-/**
- * Record a theft alert - mirrors the desktop app's
- * database.log_theft_alert(). Called by the Scan tab's exit scanner
- * when a scanned tag is flagged (see lib/detector.ts).
- */
-export async function logTheftAlert(
-  tagId: string,
-  item: LinenItem | null,
-  message: string
-): Promise<void> {
-  const { error } = await supabase.from('theft_alerts').insert({
-    tag_id: tagId,
-    item_type: item?.itemType ?? 'Unknown',
-    room_number: item?.roomNumber ?? 'Unknown',
-    customer_name: item?.customerName ?? 'Unknown',
-    message,
-  });
-
-  if (error) {
-    throw friendlyWriteError('log theft alert', error);
-  }
-}
-
-/**
- * Whether this tag already has an undismissed theft alert waiting -
- * used by the exit scanner so a tag sitting near (or repeatedly
- * passing) the reader only raises one alert instead of a fresh one
- * every time it's re-scanned. Once dismissed (by anyone, from any of
- * the three apps - theft_alerts is shared), the next flagged scan of
- * that tag raises a new one again.
- */
-export async function hasActiveAlert(tagId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('theft_alerts')
-    .select('id')
-    .eq('tag_id', tagId)
-    .eq('dismissed', false)
-    .limit(1);
-
-  if (error) {
-    throw new Error(`Failed to check active alerts: ${error.message}`);
-  }
-
-  return (data ?? []).length > 0;
 }
 
 /** Every theft alert that hasn't been dismissed yet, newest first. */
@@ -420,6 +312,36 @@ export async function getRecentItemEvents(): Promise<ItemEvent[]> {
   }
 
   return (data ?? []).map(mapRowToItemEvent);
+}
+
+export type ScannerMode = 'register' | 'assign' | 'exit' | null;
+
+export interface ScannerStatus {
+  mode: ScannerMode;
+  updatedAt: string | null;
+}
+
+/**
+ * What the desktop app's one physical scanner is currently doing
+ * (Register / Assign to Guest / Exit Scanner, or no mode picked yet) -
+ * ported from the web dashboard's `getScannerStatus()`. Mirrors
+ * main.py's self.scan_mode, written there by
+ * database.update_scanner_status() every time it changes. Returns
+ * mode: null if the desktop app has never reported in (row doesn't
+ * exist yet) or has since closed (see main.py's _on_close()).
+ */
+export async function getScannerStatus(): Promise<ScannerStatus> {
+  const { data, error } = await supabase
+    .from('scanner_status')
+    .select('mode, updated_at')
+    .eq('id', 'desktop')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load scanner status: ${error.message}`);
+  }
+
+  return { mode: (data?.mode as ScannerMode) ?? null, updatedAt: data?.updated_at ?? null };
 }
 
 export interface LinenStats {

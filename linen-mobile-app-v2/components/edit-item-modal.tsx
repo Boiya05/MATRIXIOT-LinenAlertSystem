@@ -16,9 +16,10 @@
  */
 
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { PressableScale } from '@/components/pressable-scale';
+import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { logItemEvent, updateLinenItemDetails, type LinenItem } from '@/data/linen-data';
@@ -134,16 +135,7 @@ export function EditItemModal({
             <PressableScale onPress={onClose} disabled={saving} style={styles.cancelButton}>
               <ThemedText style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancel</ThemedText>
             </PressableScale>
-            <PressableScale
-              onPress={handleSave}
-              disabled={saving}
-              style={[styles.saveButton, { backgroundColor: colors.tint, opacity: saving ? 0.6 : 1 }]}>
-              {saving ? (
-                <ActivityIndicator color={colors.background} size="small" />
-              ) : (
-                <ThemedText style={{ color: colors.background, fontWeight: '700' }}>Save</ThemedText>
-              )}
-            </PressableScale>
+            <PrimaryButton title="Save" onPress={handleSave} loading={saving} style={styles.saveButton} />
           </View>
         </Pressable>
       </Pressable>

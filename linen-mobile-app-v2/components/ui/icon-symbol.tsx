@@ -29,10 +29,11 @@ const MAPPING = {
   'door.left.hand.open': 'meeting-room',
   'person.fill': 'person',
   'clock.fill': 'history',
-  'qrcode.viewfinder': 'qr-code-scanner',
   'checkmark.circle.fill': 'check-circle',
   circle: 'radio-button-unchecked',
   pencil: 'edit',
+  magnifyingglass: 'search',
+  'antenna.radiowaves.left.and.right': 'sensors',
 } as IconMapping;
 
 /**

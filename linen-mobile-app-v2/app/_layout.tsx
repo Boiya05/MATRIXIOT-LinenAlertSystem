@@ -84,6 +84,35 @@ export default function RootLayout() {
   );
 }
 
+// React Navigation's own theme (drives any native header bar, screen
+// transition backgrounds, etc.) built on the stock Default/DarkTheme
+// as a base, with colors swapped in from constants/theme.ts - so any
+// native chrome that does appear matches the web dashboard's teal/
+// slate palette instead of RN's default blue.
+const AppLightTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: Colors.light.tint,
+    background: Colors.light.background,
+    card: Colors.light.cardBackground,
+    text: Colors.light.text,
+    border: Colors.light.border,
+  },
+};
+
+const AppDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    primary: Colors.dark.tint,
+    background: Colors.dark.background,
+    card: Colors.dark.cardBackground,
+    text: Colors.dark.text,
+    border: Colors.dark.border,
+  },
+};
+
 /**
  * Split out from RootLayout so useColorScheme() (which reads from
  * ThemePreferenceProvider above) runs inside the provider, not above it.
@@ -92,7 +121,7 @@ function AppShell() {
   const colorScheme = useColorScheme();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
       <RootNavigator />
       {/* Status bar icon color follows the resolved app theme, not the
           raw OS setting, so it stays legible even when the user has
